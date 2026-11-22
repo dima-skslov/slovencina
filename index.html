@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#23854B">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://www.gstatic.com https://apis.google.com https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: https://*.googleusercontent.com; connect-src 'self' https://firestore.googleapis.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://www.googleapis.com https://firebaseinstallations.googleapis.com https://apis.google.com https://www.gstatic.com; frame-src https://slovencina-70ab6.firebaseapp.com https://accounts.google.com https://apis.google.com; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'">
+<meta name="referrer" content="strict-origin-when-cross-origin">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<title>Slovenčina · Діма і Наташа</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Nunito:wght@500;700;800;900&amp;display=swap">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div id="app">
+  <nav id="side" aria-label="Розділи"></nav>
+  <main id="main" tabindex="-1"></main>
+</div>
+<nav id="bottom" aria-label="Розділи"></nav>
+
+<div id="player" hidden>
+  <header class="pl-top">
+    <button class="iconbtn" id="pl-close" aria-label="Закрити сесію"><svg viewBox="0 0 24 24" fill="none" stroke="#56655B" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+    <div class="pl-bar" role="progressbar" aria-label="Прогрес сесії"><i id="pl-fill"></i></div>
+    <span id="pl-count" class="small b muted"></span>
+    <button class="btn ghost small" id="pl-cheatbtn" aria-expanded="false" hidden>Шпаргалка</button>
+  </header>
+  <div class="pl-mid">
+    <div id="pl-body"></div>
+    <div id="pl-scrim" hidden></div>
+    <aside id="pl-cheat" aria-label="Шпаргалка" hidden></aside>
+  </div>
+  <footer id="pl-foot" class="pl-foot" hidden></footer>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
