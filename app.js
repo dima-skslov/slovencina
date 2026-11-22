@@ -119,7 +119,7 @@ function pushCloud() {
   clearTimeout(cloudT); cloudT = null;
   if (!(CLOUD && UID && window.Cloud)) return;
   SYNC.state = 'saving';
-  window.Cloud.saveProgress(UID, NAMES[PROFILE], S).then(() => { SYNC = { state: 'ok', err: '' }; }, e => { SYNC = { state: 'err', err: e.code || e.message }; toast('Прогрес не синхронізувався: ' + SYNC.err); });
+  window.Cloud.saveProgress(UID, NAMES[PROFILE], S).then(() => { SYNC = { state: 'ok', err: '', at: new Date().toLocaleTimeString('uk-UA') }; }, e => { SYNC = { state: 'err', err: e.code || e.message, at: new Date().toLocaleTimeString('uk-UA') }; toast('Прогрес не синхронізувався: ' + SYNC.err); if ($('#player').hidden) render(); });
 }
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden' && cloudT) pushCloud(); });
 function otherState() { const o = PROFILE === 'dima' ? 'natasha' : 'dima'; if (CLOUD) return { id: o, st: OTHER[o] || null }; const st = Store.get('p.' + o, null); return st ? { id: o, st: Object.assign(newState(), st) } : { id: o, st: null }; }
@@ -709,6 +709,7 @@ VIEWS.today = main => {
   const g = nextDay('g');
   main.append(h('div', { class: 'stack' },
     h('div', { class: 'hello' }, h('div', { class: 'col', style: 'gap:2px' }, h('span', { class: 'muted b small' }, UA_WD[now.getDay()] + ', ' + now.getDate() + ' ' + UA_MONTHS[now.getMonth()]), h('h1', null, 'Привіт, ' + NAMES[PROFILE] + '!')), h('button', { class: 'avatar', 'aria-label': 'Змінити профіль', onclick: switchProfile }, NAMES[PROFILE][0])),
+    CLOUD && SYNC.state === 'err' ? h('div', { class: 'note' }, 'Прогрес не зберігається в базі: ' + SYNC.err + '. Зроби скриншот і надішли Дімі.') : null,
     h('div', { class: 'grid2' },
       h('div', { class: 'stack' },
         h('div', { class: 'card raised' },
@@ -949,7 +950,13 @@ VIEWS.more = main => {
         h('button', { class: 'btn ghost small', onclick: () => { const txt = JSON.stringify({ profile: PROFILE, state: S }); try { navigator.clipboard.writeText(txt).then(() => toast('Копію скопійовано'), () => showExport(txt)); } catch (e) { showExport(txt); } } }, 'Скопіювати копію'),
         h('button', { class: 'btn ghost small', onclick: importDialog }, 'Відновити з копії'),
         h('button', { class: 'btn ghost small', onclick: () => dialog('Скинути весь прогрес?', h('p', null, 'Буде видалено пройдені дні, картки, помилки й тексти профілю «' + NAMES[PROFILE] + '» у цьому браузері.'), [['Скасувати', () => { }, 'ghost'], ['Скинути', () => { S = newState(); save(); render(); toast('Прогрес скинуто'); }, 'orange']]) }, 'Скинути все'))),
-    h('p', { class: 'tiny muted' }, (CLOUD ? 'Версія: 1.2 (23.11)' : 'Версія: пілот 0.5') + ' · уроків завантажено: ' + Object.keys(C.lessons).length + (C.errors.length ? ' · помилка завантаження: ' + C.errors.join(', ') : ''))));
+    h('div', { class: 'card' }, h('h3', null, 'Діагностика'), h('div', { class: 'small', style: 'line-height:1.7' },
+      h('div', null, 'Адреса: ', h('b', null, location.host || 'локально')),
+      h('div', null, 'Режим: ', h('b', null, CLOUD ? 'база Firebase' : 'лише цей браузер (пілот)')),
+      CLOUD ? h('div', null, 'Акаунт: ', h('b', null, (window.Cloud && window.Cloud.email) || '—')) : null,
+      CLOUD ? h('div', null, 'Остання синхронізація: ', h('b', null, (SYNC.at || '—') + ' · ' + ({ ok: 'успішно', err: 'ПОМИЛКА ' + SYNC.err, saving: 'триває', local: 'ще не було' }[SYNC.state] || SYNC.state))) : null,
+      h('div', null, 'Пройдено днів: ', h('b', null, Object.keys(S.done).length), ' · карток: ', h('b', null, Object.keys(S.cards).length), ' · серія: ', h('b', null, streakOf(S))))),
+    h('p', { class: 'tiny muted' }, (CLOUD ? 'Версія: 1.3 (23.11)' : 'Версія: пілот 0.5') + ' · уроків завантажено: ' + Object.keys(C.lessons).length + (C.errors.length ? ' · помилка завантаження: ' + C.errors.join(', ') : ''))));
 };
 function showExport(txt) { const ta = h('textarea', { class: 'txt', readonly: true, 'aria-label': 'Копія прогресу' }); ta.value = txt; dialog('Копія прогресу', h('div', { class: 'col' }, h('p', { class: 'small' }, 'Виділи весь текст і скопіюй.'), ta), [['Готово', () => { }]]); }
 function importDialog() {
