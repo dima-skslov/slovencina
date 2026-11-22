@@ -144,6 +144,7 @@ button.chip.on{background:var(--green-l);border-color:#A9DDB9;color:var(--green-
 .pl-inner{max-width:680px;margin:0 auto;display:flex;flex-direction:column;gap:20px}
 .kicker{font-size:13px;font-weight:900;color:var(--green-t);letter-spacing:.6px;text-transform:uppercase}
 .kicker.v{color:var(--blue-t)}
+.kicker.opt{background:none;border:0;box-shadow:none;padding:0}
 .sent{font-size:22px;font-weight:800;line-height:1.55;padding:18px;border:2px solid var(--line);border-radius:20px}
 .blank{display:inline-block;min-width:80px;border-bottom:3px solid var(--line2);text-align:center;padding:0 4px}
 .blank.ok{border-color:var(--green);color:var(--green-t)}

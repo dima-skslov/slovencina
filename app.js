@@ -156,6 +156,7 @@ function nextDay(tr) {
   for (const L of lessonsOf(tr)) for (const d of L.days) if (!isDone(L, d)) return { L, d };
   return null;
 }
+function doneSummary() { const m = {}; Object.keys(S.done).forEach(k => { const [l, n] = k.split(':'); (m[l] = m[l] || []).push(+n); }); return Object.keys(m).sort().map(l => (l[0] === 'g' ? 'Г' : 'Л') + (+l.slice(1)) + ': ' + m[l].sort((a, b) => a - b).join(',')).join(' · '); }
 function lessonProgress(L) { return L.days.filter(d => isDone(L, d)).length; }
 
 /* ---------- інтервальне повторення ---------- */
@@ -387,6 +388,7 @@ function next() { if (PL.cur && !PL.cur.answered) { PL.cur.answered = true; mark
 function endSession() {
   const mins = Math.max(1, Math.round((Date.now() - PL.started) / 60000));
   if (PL.onEnd) PL.onEnd();
+  if (PL.stats.ok + PL.stats.bad + PL.stats.almost > 0 || PL.total > 0) S.sessions[today()] = true;
   save();
   closeCheat(); $('#pl-cheatbtn').hidden = true;
   $('#pl-fill').style.width = '100%';
@@ -442,9 +444,9 @@ function hintEl(t) {
 }
 
 RENDER.rule = (it, root) => {
-  const t = it.task;
-  root.append(h('h1', null, t.title || 'Правило'), renderBlocks(t.blocks));
-  return { primary: { label: 'Зрозуміло', fn: next } };
+  const t = it.task; const opt = t.opt || /^(Підготовка|Домашнє завдання)/.test(t.title || '');
+  root.append(opt ? h('div', { class: 'kicker opt' }, h('span', { class: 'badge' }, 'Необов\'язково')) : null, h('h1', null, t.title || 'Правило'), renderBlocks(t.blocks));
+  return { primary: { label: opt ? 'Пропустити / Далі' : 'Зрозуміло', fn: next } };
 };
 
 RENDER.learn = (it, root) => {
@@ -955,8 +957,9 @@ VIEWS.more = main => {
       h('div', null, 'Режим: ', h('b', null, CLOUD ? 'база Firebase' : 'лише цей браузер (пілот)')),
       CLOUD ? h('div', null, 'Акаунт: ', h('b', null, (window.Cloud && window.Cloud.email) || '—')) : null,
       CLOUD ? h('div', null, 'Остання синхронізація: ', h('b', null, (SYNC.at || '—') + ' · ' + ({ ok: 'успішно', err: 'ПОМИЛКА ' + SYNC.err, saving: 'триває', local: 'ще не було' }[SYNC.state] || SYNC.state))) : null,
-      h('div', null, 'Пройдено днів: ', h('b', null, Object.keys(S.done).length), ' · карток: ', h('b', null, Object.keys(S.cards).length), ' · серія: ', h('b', null, streakOf(S))))),
-    h('p', { class: 'tiny muted' }, (CLOUD ? 'Версія: 1.3 (23.11)' : 'Версія: пілот 0.5') + ' · уроків завантажено: ' + Object.keys(C.lessons).length + (C.errors.length ? ' · помилка завантаження: ' + C.errors.join(', ') : ''))));
+      h('div', null, 'Пройдено днів: ', h('b', null, Object.keys(S.done).length), ' · карток: ', h('b', null, Object.keys(S.cards).length), ' · серія: ', h('b', null, streakOf(S))),
+      h('div', null, 'Дні: ', h('b', null, doneSummary() || '—')))),
+    h('p', { class: 'tiny muted' }, (CLOUD ? 'Версія: 1.4 (23.11)' : 'Версія: пілот 0.5') + ' · уроків завантажено: ' + Object.keys(C.lessons).length + (C.errors.length ? ' · помилка завантаження: ' + C.errors.join(', ') : ''))));
 };
 function showExport(txt) { const ta = h('textarea', { class: 'txt', readonly: true, 'aria-label': 'Копія прогресу' }); ta.value = txt; dialog('Копія прогресу', h('div', { class: 'col' }, h('p', { class: 'small' }, 'Виділи весь текст і скопіюй.'), ta), [['Готово', () => { }]]); }
 function importDialog() {
@@ -1079,7 +1082,7 @@ const SCHEMA_TXT = `СХЕМА (строго дотримуйся):
 
 ТИПИ ЗАВДАНЬ (поле "t"):
 {"t":"learn","cards":["id картки","..."]}  — нові слова (5–9 на день)
-{"t":"rule","title":"...","cheat":"id шпаргалки","blocks":[як у cheats]}  — коротке правило перед вправами
+{"t":"rule","title":"...","cheat":"id шпаргалки","blocks":[як у cheats]}  — коротке правило перед вправами. Завдання «напиши текст / домашнє» — теж rule, але з "opt":true (необов'язкове)
 {"t":"choice","q":"інструкція українською","sk":"речення з ___ на місці пропуску","hint":"слово в початковій формі","uk":"переклад речення","o":["правильна","хибна","хибна","хибна"],"a":0,"why":"чому так","cheat":"id шпаргалки"}
 {"t":"input","q":"...","sk":"речення з ___","hint":"...","uk":"...","a":["правильна відповідь","інший допустимий варіант"],"why":"...","cheat":"..."}
 {"t":"match","q":"З'єднай пари","pairs":[["словацькою","українською"], 4–6 пар]}
