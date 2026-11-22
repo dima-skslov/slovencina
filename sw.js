@@ -1,5 +1,5 @@
 /* Офлайн-оболонка: завжди спершу свіжа версія з мережі (без HTTP-кешу), без мережі — збережена копія. */
-const CACHE = 'slovencina-v3';
+const CACHE = 'slovencina-v4';
 const SHELL = ['./', 'index.html', 'app.js', 'cloud.js', 'styles.css', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png'];
 self.addEventListener('install', e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL.map(u => new Request(u, { cache: 'reload' })))).then(() => self.skipWaiting())); });
 self.addEventListener('activate', e => { e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== CACHE).map(k => caches.delete(k)))).then(() => self.clients.claim())); });

@@ -279,3 +279,17 @@ body{overflow-wrap:break-word}
   #pl-cheatbtn{padding:0 10px;font-size:14px}
 }
 @media (max-width:360px){ .dot{width:36px;height:36px} .cal{grid-template-columns:50px repeat(14,minmax(0,1fr)) 20px} }
+/* складання речення з плиток */
+.tiles{display:flex;flex-wrap:wrap;gap:8px}
+.tiles.line-box{min-height:64px;border-bottom:2px solid var(--line2);padding:6px 0 12px;align-items:flex-start}
+.tiles.line-box.ok{border-color:var(--green)} .tiles.line-box.bad{border-color:var(--orange)}
+.wtile{border:2px solid var(--line);border-radius:14px;background:#fff;padding:8px 13px;font-weight:800;font-size:17px;box-shadow:0 3px 0 var(--line);cursor:pointer}
+.wtile:disabled{background:var(--surface);color:transparent;box-shadow:none;cursor:default}
+textarea.answer{height:auto;resize:vertical;min-height:62px;line-height:1.4;padding:12px 16px}
+/* діалог за ролями */
+.para.roles .sk .line{padding:4px 10px;border-radius:12px;margin:3px 0}
+.para.roles .sk .line.ra{background:var(--green-xl);border-left:4px solid var(--green)}
+.para.roles .sk .line.rb{background:var(--blue-l);border-left:4px solid var(--blue);margin-left:18px}
+.para.roles .sk .line.hid{color:transparent;text-shadow:0 0 9px rgba(31,42,34,.55);cursor:pointer;user-select:none}
+.para.roles .sk .line.hid .w{color:transparent;pointer-events:none}
+.rolebar{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
