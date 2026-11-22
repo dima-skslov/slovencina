@@ -89,10 +89,28 @@ const Store = {
   set(k, v) { mem[k] = clone(v); try { localStorage.setItem('skslov.' + k, JSON.stringify(v)); } catch (e) { /* лише в пам'яті */ } },
   del(k) { delete mem[k]; try { localStorage.removeItem('skslov.' + k); } catch (e) { } }
 };
-function newState() { return { v: 1, rev: 0, course: 9, done: {}, sessions: {}, cards: {}, mistakes: {}, texts: [], links: {}, settings: { tts: true } }; }
+function newState() { return { v: 1, rev: 0, reset: {}, course: 9, done: {}, sessions: {}, cards: {}, mistakes: {}, texts: [], links: {}, settings: { tts: true } }; }
 let PROFILE = null, S = null;
 function loadProfile(p) { PROFILE = p; S = Object.assign(newState(), Store.get('p.' + p, {})); Store.set('profile', p); }
 let cloudT = null;
+/** злиття прогресу з двох пристроїв: нічого пройденого не губиться */
+function mergeState(a, b) {
+  if (!b) return a; if (!a) return b;
+  const newer = (b.rev || 0) > (a.rev || 0) ? b : a, older = newer === a ? b : a;
+  const out = Object.assign(newState(), clone(newer));
+  out.reset = Object.assign({}, older.reset || {}, newer.reset || {});
+  Object.keys(older.reset || {}).forEach(k => { if ((older.reset[k] || 0) > (out.reset[k] || 0)) out.reset[k] = older.reset[k]; });
+  out.done = {};
+  [older, newer].forEach(st => { const r = st.reset || {}; Object.entries(st.done || {}).forEach(([k, v]) => { const l = k.split(':')[0]; if ((r[l] || 0) >= (out.reset[l] || 0) && (!out.done[k] || v < out.done[k])) out.done[k] = v; }); });
+  out.sessions = Object.assign({}, older.sessions || {}, newer.sessions || {});
+  out.cards = Object.assign({}, older.cards || {});
+  Object.entries(newer.cards || {}).forEach(([k, c]) => { const o = out.cards[k]; if (!o || String(c.due || '') >= String(o.due || '')) out.cards[k] = c; });
+  const tx = {}; (older.texts || []).forEach(t => { tx[t.id] = t; }); (newer.texts || []).forEach(t => { tx[t.id] = t; }); out.texts = Object.values(tx);
+  out.links = Object.assign({}, older.links || {}, newer.links || {});
+  out.rev = Math.max(a.rev || 0, b.rev || 0);
+  return out;
+}
+const progressSig = st => Object.keys(st.done || {}).length + '|' + Object.keys(st.sessions || {}).length + '|' + Object.keys(st.cards || {}).length + '|' + Object.keys(st.mistakes || {}).length;
 function save() {
   S.rev = Date.now(); Store.set('p.' + PROFILE, S);
   if (CLOUD && UID && window.Cloud) { clearTimeout(cloudT); cloudT = setTimeout(pushCloud, 1500); }
@@ -744,7 +762,7 @@ VIEWS.lesson = (main, id) => {
       h('button', { class: 'btn small ' + (isDone(L, d) ? 'ghost' : ''), onclick: () => startDay(L, d) }, isDone(L, d) ? 'Ще раз' : 'Почати'))))),
     (L.cheats || []).length ? h('div', { class: 'card' }, h('h3', null, 'Шпаргалки'), h('div', { class: 'row wrap' }, L.cheats.map(c => h('a', { class: 'chip', href: '#cheat-' + L.id + '-' + c.id }, c.title)))) : null,
     L.text ? h('a', { class: 'card', href: '#read-' + L.id, style: 'text-decoration:none;color:inherit' }, h('div', { class: 'spread' }, h('span', { class: 'b' }, 'Текст: ', h('span', { lang: 'sk' }, L.text.title)), icon('book'))) : null,
-    h('div', { class: 'row wrap' }, h('button', { class: 'btn ghost small', onclick: () => dialog('Скинути прогрес уроку?', h('p', null, 'Усі 7 днів уроку ' + L.num + ' знову стануть непройденими. Картки й помилки залишаться.'), [['Скасувати', () => { }, 'ghost'], ['Скинути', () => { L.days.forEach(d => delete S.done[dayKey(L, d)]); save(); render(); toast('Прогрес уроку скинуто'); }, 'orange']]) }, 'Перезапустити урок'))
+    h('div', { class: 'row wrap' }, h('button', { class: 'btn ghost small', onclick: () => dialog('Скинути прогрес уроку?', h('p', null, 'Усі 7 днів уроку ' + L.num + ' знову стануть непройденими. Картки й помилки залишаться.'), [['Скасувати', () => { }, 'ghost'], ['Скинути', () => { L.days.forEach(d => delete S.done[dayKey(L, d)]); S.reset = S.reset || {}; S.reset[L.id] = Date.now(); save(); render(); toast('Прогрес уроку скинуто'); }, 'orange']]) }, 'Перезапустити урок'))
   ));
 };
 
@@ -931,7 +949,7 @@ VIEWS.more = main => {
         h('button', { class: 'btn ghost small', onclick: () => { const txt = JSON.stringify({ profile: PROFILE, state: S }); try { navigator.clipboard.writeText(txt).then(() => toast('Копію скопійовано'), () => showExport(txt)); } catch (e) { showExport(txt); } } }, 'Скопіювати копію'),
         h('button', { class: 'btn ghost small', onclick: importDialog }, 'Відновити з копії'),
         h('button', { class: 'btn ghost small', onclick: () => dialog('Скинути весь прогрес?', h('p', null, 'Буде видалено пройдені дні, картки, помилки й тексти профілю «' + NAMES[PROFILE] + '» у цьому браузері.'), [['Скасувати', () => { }, 'ghost'], ['Скинути', () => { S = newState(); save(); render(); toast('Прогрес скинуто'); }, 'orange']]) }, 'Скинути все'))),
-    h('p', { class: 'tiny muted' }, (CLOUD ? 'Версія: 1.1 (23.11)' : 'Версія: пілот 0.5') + ' · уроків завантажено: ' + Object.keys(C.lessons).length + (C.errors.length ? ' · помилка завантаження: ' + C.errors.join(', ') : ''))));
+    h('p', { class: 'tiny muted' }, (CLOUD ? 'Версія: 1.2 (23.11)' : 'Версія: пілот 0.5') + ' · уроків завантажено: ' + Object.keys(C.lessons).length + (C.errors.length ? ' · помилка завантаження: ' + C.errors.join(', ') : ''))));
 };
 function showExport(txt) { const ta = h('textarea', { class: 'txt', readonly: true, 'aria-label': 'Копія прогресу' }); ta.value = txt; dialog('Копія прогресу', h('div', { class: 'col' }, h('p', { class: 'small' }, 'Виділи весь текст і скопіюй.'), ta), [['Готово', () => { }]]); }
 function importDialog() {
@@ -1190,14 +1208,23 @@ async function cloudBoot() {
     const local = Store.get('p.' + prof, null);
     let remote = null, remoteOk = true;
     try { const d = await Cl.loadProgress(UID); if (d && d.json) remote = JSON.parse(d.json); } catch (e) { remoteOk = false; }
-    const useRemote = remote && (!local || (remote.rev || 0) >= (local.rev || 0));
-    S = Object.assign(newState(), useRemote ? remote : (local || {}));
+    S = Object.assign(newState(), mergeState(local ? Object.assign(newState(), local) : null, remote ? Object.assign(newState(), remote) : null) || {});
     Store.set('p.' + prof, S);
-    if (remoteOk && !useRemote) pushCloud();
+    if (remoteOk && (!remote || progressSig(S) !== progressSig(Object.assign(newState(), remote)))) pushCloud();
     SYNC.state = remoteOk ? 'ok' : 'err';
     try { await loadContent(); } catch (e) { C.errors.push('уроки: ' + (e.code || e.message)); }
     Cl.watchProgress(list => {
-      list.forEach(d => { const p2 = Cl.ALLOWED[String(d.email || '').toLowerCase()]; if (p2 && p2 !== PROFILE) { try { OTHER[p2] = Object.assign(newState(), JSON.parse(d.json)); } catch (e) { } } });
+      let changed = false;
+      list.forEach(d => {
+        const p2 = Cl.ALLOWED[String(d.email || '').toLowerCase()]; if (!p2) return;
+        let st; try { st = Object.assign(newState(), JSON.parse(d.json)); } catch (e) { return; }
+        if (p2 !== PROFILE) { OTHER[p2] = st; return; }
+        if (d.id !== UID) return;
+        const before = progressSig(S); S = mergeState(S, st); Store.set('p.' + PROFILE, S);
+        if (progressSig(S) !== before) changed = true;
+        if (progressSig(S) !== progressSig(st)) { clearTimeout(cloudT); cloudT = setTimeout(pushCloud, 1500); }
+      });
+      if (!changed && !list.length) return;
       if ($('#player').hidden && ['today', ''].includes(ROUTE)) render();
     }, () => { });
     ungate(); render();
