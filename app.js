@@ -931,7 +931,7 @@ VIEWS.more = main => {
         h('button', { class: 'btn ghost small', onclick: () => { const txt = JSON.stringify({ profile: PROFILE, state: S }); try { navigator.clipboard.writeText(txt).then(() => toast('Копію скопійовано'), () => showExport(txt)); } catch (e) { showExport(txt); } } }, 'Скопіювати копію'),
         h('button', { class: 'btn ghost small', onclick: importDialog }, 'Відновити з копії'),
         h('button', { class: 'btn ghost small', onclick: () => dialog('Скинути весь прогрес?', h('p', null, 'Буде видалено пройдені дні, картки, помилки й тексти профілю «' + NAMES[PROFILE] + '» у цьому браузері.'), [['Скасувати', () => { }, 'ghost'], ['Скинути', () => { S = newState(); save(); render(); toast('Прогрес скинуто'); }, 'orange']]) }, 'Скинути все'))),
-    h('p', { class: 'tiny muted' }, (CLOUD ? 'Версія: 1.0' : 'Версія: пілот 0.3') + ' · уроків завантажено: ' + Object.keys(C.lessons).length + (C.errors.length ? ' · помилка завантаження: ' + C.errors.join(', ') : ''))));
+    h('p', { class: 'tiny muted' }, (CLOUD ? 'Версія: 1.1 (23.11)' : 'Версія: пілот 0.5') + ' · уроків завантажено: ' + Object.keys(C.lessons).length + (C.errors.length ? ' · помилка завантаження: ' + C.errors.join(', ') : ''))));
 };
 function showExport(txt) { const ta = h('textarea', { class: 'txt', readonly: true, 'aria-label': 'Копія прогресу' }); ta.value = txt; dialog('Копія прогресу', h('div', { class: 'col' }, h('p', { class: 'small' }, 'Виділи весь текст і скопіюй.'), ta), [['Готово', () => { }]]); }
 function importDialog() {
@@ -1170,7 +1170,7 @@ async function cloudBoot() {
   const sc = document.createElement('script'); sc.type = 'module'; sc.src = 'cloud.js'; document.head.append(sc);
   let Cl;
   try { Cl = await waitCloud(20000); } catch (e) { gate(h('h2', null, 'Не вдалося завантажити Firebase'), h('p', { class: 'muted' }, 'Перевір інтернет і онови сторінку.')); return; }
-  if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => { });
+  if ('serviceWorker' in navigator) { const hadCtrl = !!navigator.serviceWorker.controller; navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then(r => r.update()).catch(() => { }); let rl = false; navigator.serviceWorker.addEventListener('controllerchange', () => { if (hadCtrl && !rl && $('#player').hidden) { rl = true; location.reload(); } }); }
   let started = false;
   Cl.onUser(async user => {
     if (!user) {
