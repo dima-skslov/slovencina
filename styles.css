@@ -237,3 +237,44 @@ textarea.txt{min-height:220px;resize:vertical}
 .endscreen{display:flex;flex-direction:column;align-items:center;gap:16px;text-align:center;padding-top:6vh}
 .big{font-size:44px;font-weight:900;color:var(--green)}
 .sk-lang{font-weight:800}
+
+/* ---------- смартфон: доопрацювання ---------- */
+body{overflow-wrap:break-word}
+.para .line + .line{margin-top:8px}
+.uk .line + .line{margin-top:6px}
+.node .lbl{white-space:nowrap;font-size:12px;min-height:16px}
+.flash .fw{overflow-wrap:anywhere}
+@media (max-width:600px){
+  #main{padding:16px 14px 100px}
+  h1{font-size:24px} h2{font-size:19px} h3{font-size:16px}
+  .card{padding:14px;border-radius:18px;gap:12px}
+  .path{gap:2px}
+  .dot{width:40px;height:40px;font-size:16px;box-shadow:0 3px 0 var(--line2)}
+  .node.done .dot{box-shadow:0 3px 0 var(--green-d)}
+  .node.v.done .dot{box-shadow:0 3px 0 var(--blue-d)}
+  .node.rev .dot{box-shadow:0 3px 0 var(--orange-b)}
+  .dot svg{width:20px;height:20px}
+  .node .lbl{font-size:11px}
+  .streak{padding:8px 10px}
+  .cal{grid-template-columns:58px repeat(14,minmax(0,1fr)) 22px;gap:3px;font-size:13px}
+  .cal i{height:16px}
+  #pl-body{padding:8px 14px 20px}
+  .pl-inner{gap:16px}
+  .pl-top{padding:8px 10px;gap:8px}
+  .sent{font-size:19px;padding:14px}
+  .opt{font-size:16px;min-height:54px;padding:8px 12px}
+  .flash{padding:22px 14px}
+  .flash .fw{font-size:26px}
+  .flash .tr{font-size:19px}
+  .fb .t{font-size:20px}
+  .fb{font-size:15px}
+  .pl-foot .in{padding:12px 14px calc(14px + env(safe-area-inset-bottom));gap:10px}
+  .para .sk{font-size:18px;line-height:1.7}
+  .tiles{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .dayrow{flex-wrap:wrap}
+  .blocks table{font-size:14px}
+  .blocks td,.blocks th{padding:6px 5px}
+  .match .opt{font-size:15px;min-height:50px}
+  #pl-cheatbtn{padding:0 10px;font-size:14px}
+}
+@media (max-width:360px){ .dot{width:36px;height:36px} .cal{grid-template-columns:50px repeat(14,minmax(0,1fr)) 20px} }

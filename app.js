@@ -213,6 +213,7 @@ const VIEWS = {};
 let ROUTE = 'today';
 function go(r) { if (location.hash.slice(1) === r) render(); else location.hash = r; }
 function render() {
+  stopSpeech();
   ROUTE = location.hash.slice(1) || 'today';
   const [name, ...rest] = ROUTE.split('-');
   const fn = VIEWS[name] || VIEWS.today;
@@ -226,7 +227,7 @@ const NAV = [
   ['texts', 'Мої тексти', 'pen'], ['phrases', 'Фрази', 'chat'], ['eslovak', 'e-slovak', 'link'], ['add', 'Додати урок', 'plus'], ['more', 'Налаштування', 'gear']
 ];
 function renderNav(cur) {
-  const map = { lesson: 'lessons', cheat: 'cheats', read: 'reading', text: 'texts' };
+  const map = { lesson: 'lessons', cheat: 'cheats', read: 'reading', text: 'texts', howto: 'add' };
   const active = map[cur] || cur;
   const side = $('#side'); side.replaceChildren(
     h('div', { class: 'logo' }, 'slovenčina'),
@@ -263,10 +264,13 @@ function switchProfile() {
 /* ---------- озвучка (лише якщо є словацький голос) ---------- */
 let SK_VOICE = null;
 function findVoice() { try { const vs = speechSynthesis.getVoices(); SK_VOICE = vs.find(v => /^sk/i.test(v.lang)) || null; } catch (e) { SK_VOICE = null; } }
-try { findVoice(); speechSynthesis.onvoiceschanged = findVoice; } catch (e) { }
-function speakBtn(text) {
+function stopSpeech() { try { speechSynthesis.cancel(); } catch (e) { } }
+try { findVoice(); speechSynthesis.onvoiceschanged = () => { const had = !!SK_VOICE; findVoice(); if (!had && SK_VOICE && PROFILE && $('#player').hidden) render(); }; } catch (e) { }
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') stopSpeech(); });
+window.addEventListener('pagehide', stopSpeech);
+function speakBtn(text, light) {
   if (!SK_VOICE || S.settings.tts === false) return null;
-  return h('button', { class: 'iconbtn', 'aria-label': 'Озвучити', onclick: () => { try { speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(text.replace(/\(.*?\)/g, '')); u.voice = SK_VOICE; u.lang = SK_VOICE.lang; u.rate = 0.9; speechSynthesis.speak(u); } catch (e) { } } }, icon('speak'));
+  return h('button', { class: 'iconbtn', 'aria-label': 'Озвучити', style: light ? 'color:#fff' : null, onclick: () => { try { speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(text.replace(/\(.*?\)/g, '')); u.voice = SK_VOICE; u.lang = SK_VOICE.lang; u.rate = 0.9; speechSynthesis.speak(u); } catch (e) { } } }, icon('speak'));
 }
 
 /* ---------- блоки шпаргалок ---------- */
@@ -303,7 +307,7 @@ function askExit() {
 function progressUI() { $('#pl-fill').style.width = Math.round(100 * PL.done / Math.max(1, PL.total)) + '%'; $('#pl-count').textContent = Math.min(PL.done + 1, PL.total) + '/' + PL.total; }
 
 function showItem() {
-  closeCheat();
+  closeCheat(); stopSpeech();
   if (PL.i >= PL.items.length) return endSession();
   const it = PL.items[PL.i]; PL.cur = it;
   progressUI();
@@ -522,20 +526,27 @@ RENDER.readp = (it, root) => {
   root.append(pop);
   return { primary: { label: 'Далі', fn: next } };
 };
+/** діалог: кожна репліка, що починається з тире, з нового рядка */
+function splitLines(t) { return /^\s*[–—-]\s/.test(t) ? t.split(/\s(?=[–—]\s)/) : [t]; }
 function paraEl(tx, pi, pop) {
   const p = tx.paras[pi];
-  const uk = h('div', { class: 'uk', hidden: true }, p.uk);
+  const uk = h('div', { class: 'uk', hidden: true }, splitLines(p.uk).map(l => h('div', { class: 'line' }, l)));
   const sk = h('div', { class: 'sk', lang: 'sk' });
-  p.sk.split(/(\s+)/).forEach(tok => {
-    if (/^\s+$/.test(tok)) { sk.append(tok); return; }
-    const m = tok.match(/^([„“"(]*)(.*?)([.,!?;:)“"”]*)$/);
-    const word = m ? m[2] : tok; const key = word.toLowerCase();
-    if (!word || !tx.gloss || !tx.gloss[key]) { sk.append(tok); return; }
-    if (m[1]) sk.append(m[1]);
-    const b = h('button', { class: 'w', onclick: () => { document.querySelectorAll('.w.on').forEach(x => x.classList.remove('on')); b.classList.add('on'); pop.replaceChildren(h('span', null, h('b', { lang: 'sk' }, word), ' — ', tx.gloss[key]), h('button', { class: 'iconbtn', 'aria-label': 'Закрити', style: 'color:#fff', onclick: () => { pop.hidden = true; b.classList.remove('on'); } }, icon('x'))); pop.hidden = false; } }, word);
-    sk.append(b); if (m[3]) sk.append(m[3]);
+  splitLines(p.sk).forEach(line => {
+    const ln = h('div', { class: 'line' });
+    line.split(/(\s+)/).forEach(tok => {
+      if (/^\s+$/.test(tok)) { ln.append(tok); return; }
+      const m = tok.match(/^([„“"(]*)(.*?)([.,!?;:)“"”…]*)$/);
+      const word = m ? m[2] : tok; const key = word.toLowerCase();
+      if (!word || !tx.gloss || !tx.gloss[key]) { ln.append(tok); return; }
+      const nw = h('span', { style: 'white-space:nowrap' }); if (m[1]) nw.append(m[1]);
+      const b = h('button', { class: 'w', onclick: () => { document.querySelectorAll('.w.on').forEach(x => x.classList.remove('on')); b.classList.add('on'); pop.replaceChildren(h('span', null, h('b', { lang: 'sk' }, word), ' — ', tx.gloss[key]), h('div', { class: 'row', style: 'gap:4px' }, speakBtn(word, true), h('button', { class: 'iconbtn', 'aria-label': 'Закрити', style: 'color:#fff', onclick: () => { pop.hidden = true; b.classList.remove('on'); } }, icon('x')))); pop.hidden = false; } }, word);
+      nw.append(b); if (m[3]) nw.append(m[3]); ln.append(nw);
+    });
+    sk.append(ln);
   });
-  return h('div', { class: 'para' }, h('div', { class: 'row' }, h('div', { class: 'grow' }, sk), speakBtn(p.sk)), h('div', null, h('button', { class: 'link', onclick: e => { uk.hidden = !uk.hidden; e.target.textContent = uk.hidden ? 'Переклад абзацу' : 'Сховати переклад'; } }, 'Переклад абзацу')), uk);
+  const tbtn = h('button', { class: 'link', onclick: () => { uk.hidden = !uk.hidden; tbtn.textContent = uk.hidden ? 'Переклад абзацу' : 'Сховати переклад'; } }, 'Переклад абзацу');
+  return h('div', { class: 'para' }, sk, h('div', { class: 'row', style: 'gap:6px' }, tbtn, speakBtn(p.sk)), uk);
 }
 
 /* ---------- покроковий визначник ---------- */
@@ -663,7 +674,7 @@ function dayPath(L) {
   return h('div', { class: 'path' }, L.days.map(d => {
     const done = isDone(L, d), cur = dayKey(L, d) === curKey, rev = d.kind === 'review';
     return h('button', { class: 'node ' + (L.track === 'v' ? 'v ' : '') + (done ? 'done ' : '') + (cur ? 'cur ' : '') + (rev ? 'rev' : ''), title: d.title, 'aria-label': 'День ' + d.n + ': ' + d.title + (done ? ' (пройдено)' : ''), onclick: () => startDay(L, d) },
-      h('span', { class: 'dot' }, done ? icon('check') : rev ? icon('redo') : String(d.n)), h('span', { class: 'lbl' }, cur ? 'зараз' : rev ? 'Повтор' : 'День ' + d.n));
+      h('span', { class: 'dot' }, done ? icon('check') : rev ? icon('redo') : String(d.n)), h('span', { class: 'lbl' }, cur ? 'зараз' : rev ? 'повтор' : done ? '' : '\u00a0'));
   }));
 }
 function calendarRow(name, st) {
@@ -691,7 +702,7 @@ VIEWS.today = main => {
         ),
         h('div', { class: 'soft spread' }, h('span', { class: 'b' }, 'Ми на курсі зараз: ', h('span', null, 'урок ' + S.course)), h('button', { class: 'link', onclick: chooseCourse }, 'змінити')),
         g && g.L.num < S.course ? h('div', { class: 'note spread' }, h('span', null, 'Курс уже на уроці ' + S.course + '. Платформа чекає на тебе на уроці ' + g.L.num + '.'), C.lessons[lid('g', S.course)] ? h('button', { class: 'btn small orange', onclick: () => go('lesson-' + lid('g', S.course)) }, 'Урок ' + S.course) : null) : null,
-        ...['g', 'v'].map(tr => { const nd = nextDay(tr) || (lessonsOf(tr).length ? { L: lessonsOf(tr)[lessonsOf(tr).length - 1] } : null); if (!nd) return null; const L = nd.L; return h('div', { class: 'card' }, h('div', { class: 'spread' }, h('h3', null, (tr === 'g' ? 'Граматика' : 'Лексика') + ' · урок ' + L.num), h('a', { href: '#lesson-' + L.id, class: 'small b' }, L.title)), dayPath(L), PILOT ? h('p', { class: 'tiny muted' }, 'Пілот: будь-який день можна відкрити тапом.') : null); })
+        ...['g', 'v'].map(tr => { const nd = nextDay(tr) || (lessonsOf(tr).length ? { L: lessonsOf(tr)[lessonsOf(tr).length - 1] } : null); if (!nd) return null; const L = nd.L; return h('div', { class: 'card' }, h('div', { class: 'col', style: 'gap:2px' }, h('h3', null, (tr === 'g' ? 'Граматика' : 'Лексика') + ' · урок ' + L.num), h('a', { href: '#lesson-' + L.id, class: 'small b', lang: 'sk' }, L.title)), dayPath(L), PILOT ? h('p', { class: 'tiny muted' }, 'Пілот: будь-який день можна відкрити тапом.') : null); })
       ),
       h('div', { class: 'stack' },
         h('div', { class: 'streaks' }, [[PROFILE, S], [o.id, o.st]].map(([id, st]) => h('div', { class: 'streak' }, icon('flame'), h('div', { class: 'col', style: 'gap:0' }, h('span', { class: 'small b muted' }, NAMES[id]), h('span', { class: 'n' }, st ? streakOf(st) + ' ' + plural(streakOf(st), 'день', 'дні', 'днів') : '—'))))),
@@ -971,7 +982,22 @@ function validateLesson(L) {
   if (JSON.stringify(L).length > 850000) E.push('урок завеликий');
   return E;
 }
-function extractJson(text) { const a = text.indexOf('{'), b = text.lastIndexOf('}'); return a >= 0 && b > a ? text.slice(a, b + 1) : text; }
+/** знаходить усі JSON-об'єкти верхнього рівня (відповідь може бути з 2 частин) і зливає їх */
+function parseLessonText(text) {
+  const objs = []; let depth = 0, start = -1, inStr = false, esc = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (inStr) { if (esc) esc = false; else if (ch === '\\') esc = true; else if (ch === '"') inStr = false; continue; }
+    if (ch === '"' && depth > 0) { inStr = true; continue; }
+    if (ch === '{') { if (depth === 0) start = i; depth++; }
+    else if (ch === '}' && depth > 0) { depth--; if (depth === 0) { objs.push(text.slice(start, i + 1)); start = -1; } }
+  }
+  if (!objs.length) throw new Error(depth > 0 ? 'JSON обірвався: схоже, відповідь скопійована не повністю (або Claude не дописав її — напиши йому «продовж»)' : 'не знайдено JSON');
+  const out = {}; let parts = 0;
+  objs.forEach(o => { let x; try { x = JSON.parse(o); } catch (e) { return; } if (x && typeof x === 'object' && !Array.isArray(x)) { parts++; delete x.part; Object.assign(out, x); } });
+  if (!parts) throw new Error(depth > 0 ? 'JSON обірвався: схоже, відповідь скопійована не повністю' : 'JSON з помилкою синтаксису');
+  return { lesson: out, parts };
+}
 function saveLessonEverywhere(L) {
   if (CLOUD) return window.Cloud.saveLesson(L).then(() => { C.lessons[L.id] = L; });
   const list = (Store.get('lessons.local', []) || []).filter(x => x.id !== L.id); list.push(L); Store.set('lessons.local', list); C.lessons[L.id] = L; return Promise.resolve();
@@ -984,9 +1010,16 @@ VIEWS.add = main => {
   file.addEventListener('change', () => { const f = file.files[0]; if (!f) return; const r = new FileReader(); r.onload = () => { ta.value = String(r.result); check(); }; r.readAsText(f); });
   function check() {
     let L;
-    try { L = JSON.parse(extractJson(ta.value)); } catch (e) { out.replaceChildren(h('div', { class: 'note' }, 'Не вдалося прочитати JSON: ' + e.message + '. Скопіюй відповідь Claude повністю.')); return; }
+    let parts = 1;
+    try { const r = parseLessonText(ta.value); L = r.lesson; parts = r.parts; } catch (e) { out.replaceChildren(h('div', { class: 'note' }, 'Не вдалося прочитати JSON: ' + e.message + '. Скопіюй відповідь Claude повністю.')); return; }
     const E = validateLesson(L);
-    if (E.length) { out.replaceChildren(h('div', { class: 'note' }, h('b', null, 'Знайдено проблеми (' + E.length + '):'), h('ul', null, E.slice(0, 25).map(x => h('li', null, x)))), h('p', { class: 'small muted' }, 'Скопіюй цей список у той самий чат з Claude і попроси виправити JSON.')); return; }
+    if (E.length) {
+      const onlyPart1 = !Array.isArray(L.days);
+      const msg = 'Платформа знайшла помилки в JSON уроку ' + (L.id || '') + ':\n' + E.map(x => '- ' + x).join('\n') + '\n\nВиправ їх і дай повний JSON ще раз (за тією самою схемою, можна у 2 частинах).';
+      out.replaceChildren(h('div', { class: 'note' }, h('b', null, onlyPart1 ? 'Схоже, тут лише частина 1. Напиши в чаті «далі» і встав частину 2 у це ж поле під першою.' : 'Знайдено проблеми (' + E.length + '):'), onlyPart1 ? null : h('ul', null, E.slice(0, 25).map(x => h('li', null, x)))),
+        onlyPart1 ? null : h('button', { class: 'btn ghost small', style: 'align-self:flex-start', onclick: () => copyText(msg, 'Помилки скопійовано: встав у чат з Claude') }, 'Скопіювати помилки'));
+      return;
+    }
     const tasks = L.days.reduce((n, d) => n + d.tasks.length, 0);
     const exists = !!C.lessons[L.id];
     out.replaceChildren(h('div', { class: 'card raised' },
@@ -998,10 +1031,119 @@ VIEWS.add = main => {
       h('button', { class: 'btn wide', onclick: e => { e.target.disabled = true; saveLessonEverywhere(L).then(() => { toast('Урок збережено'); go('lesson-' + L.id); }, err => { e.target.disabled = false; toast('Не вдалося зберегти: ' + (err.code || err.message)); }); } }, exists ? 'Замінити урок' : 'Зберегти урок')));
   }
   main.append(h('div', { class: 'stack', style: 'max-width:820px' }, h('h1', null, 'Додати урок'),
-    h('p', { class: 'muted' }, 'Встав JSON уроку, який дав Claude за шаблоном, або вибери файл .json. Платформа перевірить формат і покаже урок перед збереженням.'),
+    h('p', { class: 'muted' }, 'Встав JSON уроку, який дав Claude за шаблоном (можна обидві частини разом), або вибери файл .json. Платформа перевірить формат і покаже урок перед збереженням.'),
+    h('a', { class: 'card', href: '#howto', style: 'text-decoration:none;color:inherit' }, h('div', { class: 'spread' }, h('div', { class: 'col', style: 'gap:2px' }, h('span', { class: 'b' }, 'Як отримати урок у безкоштовному чаті Claude'), h('span', { class: 'small muted' }, 'Покрокова інструкція і шаблони запиту')), icon('book'))),
     h('div', { class: 'card' }, h('label', { for: 'lessonjson', class: 'b' }, 'JSON уроку'), ta, h('div', { class: 'row wrap' }, h('button', { class: 'btn', onclick: check }, 'Перевірити'), h('label', { class: 'btn ghost small', style: 'display:inline-flex;align-items:center' }, 'Вибрати файл', file))),
     out));
   file.style.display = 'none';
+};
+
+
+/* ---------- як додати урок: шаблони для безкоштовного чату Claude ---------- */
+const BOOK_START = [11, 22, 31, 39, 45, 51, 62, 74, 88, 101, 114, 126, 138, 150, 164, 179, 192, 203, 216, 227, 238, 253, 264, 277, 289, 302, 314, 327, 339, 353, 364, 376, 390, 403, 416, 429];
+const pdfPage = b => Math.floor((b + 6) / 2);
+function pdfRange(n) { const a = BOOK_START[n - 1], b = BOOK_START[n] - 1; return [pdfPage(a), pdfPage(b), a, b]; }
+const SCHEMA_TXT = `СХЕМА (строго дотримуйся):
+{"schema":1,"id":"ID","track":"TRACK","num":NUM,"title":"назва уроку словацькою","topic":"коротко українською, про що урок","source":"звідки матеріал",
+ "cheats":[{"id":"латиницею","title":"...","blocks":[{"t":"p","x":"абзац"},{"t":"h","x":"підзаголовок"},{"t":"list","items":["..."]},{"t":"table","head":["...","..."],"rows":[["...","..."]]},{"t":"trap","x":"пастка для українця"}]}],
+ "cards":[{"id":"латиницею","sk":"слово або вираз","uk":"переклад","ex":"приклад речення словацькою (необов'язково)"}],
+ "forms":[{"lemma":"іменник","uk":"переклад","vzor":"dub","sg":["N","G","D","A","L","I"],"pl":["N","G","D","A","L","I"]}],
+ "verbs":[{"lemma":"дієслово","uk":"переклад","pres":["ja","ty","on","my","vy","oni"],"past":["6 форм, чол. рід, напр. robil som"],"pastf":["6 форм, жін. рід"],"fut":["6 форм"]}],
+ "text":{"title":"...","paras":[{"sk":"абзац","uk":"переклад абзацу"}],"gloss":{"слово з тексту в нижньому регістрі":"переклад (для форм: «зуби (A pl від zub)»)"},"qs":[{"q":"питання словацькою","uk":"переклад питання","o":["правильна відповідь","хибна","хибна","хибна"],"a":0,"why":"пояснення"}]},
+ "days":[{"n":1,"kind":"new","title":"...","tasks":[...]}, ... {"n":6,"kind":"review","title":"Повторення 1","count":12,"tasks":[]},{"n":7,"kind":"review","title":"Повторення 2","count":12,"tasks":[]}]}
+
+ТИПИ ЗАВДАНЬ (поле "t"):
+{"t":"learn","cards":["id картки","..."]}  — нові слова (5–9 на день)
+{"t":"rule","title":"...","cheat":"id шпаргалки","blocks":[як у cheats]}  — коротке правило перед вправами
+{"t":"choice","q":"інструкція українською","sk":"речення з ___ на місці пропуску","hint":"слово в початковій формі","uk":"переклад речення","o":["правильна","хибна","хибна","хибна"],"a":0,"why":"чому так","cheat":"id шпаргалки"}
+{"t":"input","q":"...","sk":"речення з ___","hint":"...","uk":"...","a":["правильна відповідь","інший допустимий варіант"],"why":"...","cheat":"..."}
+{"t":"match","q":"З'єднай пари","pairs":[["словацькою","українською"], 4–6 пар]}
+{"t":"read","p":[номери абзаців з 0],"qs":[номери питань з 0]}
+{"t":"det","sk":"речення з ___","uk":"переклад","word":"іменник у N sg","wuk":"переклад","g":"m|f|n","anim":false,"vzor":"chlap|hrdina|dub|stroj|žena|ulica|dlaň|kosť|mesto|srdce|vysvedčenie|dievča","case":"G|D|A|L|I","num":"sg|pl","prep":"прийменник з речення (якщо є)","a":["правильна форма"],"why":"..."}
+
+ТЕХНІЧНІ ПРАВИЛА:
+- "a" у choice — номер правильного варіанта, рахуючи з 0. Платформа сама перемішує варіанти.
+- id карток і шпаргалок — лише малі латинські літери й цифри (напр. "kupelna", "dub"). Кожен id з "learn" має бути в "cards", кожен "cheat" — у "cheats".
+- Рівно 7 днів, "n" від 1 до 7. Дні 6–7: "kind":"review", "count":12, "tasks" порожні або 1–2 завдання "read".
+- У текстах можна виділяти **жирним**. Жодного HTML.
+- Відповідай ТІЛЬКИ JSON у блоці коду, без пояснень до чи після.
+- Якщо все не вміщується в одне повідомлення: частина 1 = {"schema":1,"part":1,"id":"ID", ... усе, крім "days"}; потім зупинись і напиши «Напиши: далі». Частина 2 = {"schema":1,"part":2,"id":"ID","days":[...]}.`;
+function templateGrammar(n) {
+  const [p1, p2, b1, b2] = pdfRange(n);
+  return `Ти допомагаєш двом українцям (Дімі й Наташі) вчити словацьку на рівень B1. Рідна мова українська. Прикріплено скан уроку ${n} з підручника Пахомова, Джоґанік «Словацька мова» (с. ${b1}–${b2}). На кожній сторінці PDF два книжкові розвороти.
+
+Зроби з нього урок для нашої навчальної платформи у форматі JSON (схема нижче).
+
+ЗМІСТ:
+- 7 днів по ~10 хв. Дні 1–5 "new": день 1 — нові слова + перші абзаци тексту уроку з питаннями; дні 2–5 — граматика уроку по частинах: спочатку коротке "rule", потім 8–11 вправ від простих до складніших (choice, input, match, det). Решту абзаців тексту розподіли по днях 2–7 через "read".
+- Нові слова з розділу «Слова і вирази» та з тексту розподіли по днях 1–5 (learn, 5–8 на день).
+- "cheats": кожне правило уроку на одному екрані: таблиця закінчень, порівняння з українською, пастки (типові помилки українців). Стиль коротко і по суті.
+- "why" — коротке пояснення українською, ключове закінчення **жирним**.
+- "text": текст уроку з підручника абзацами (дослівно, з правильною діакритикою) + переклад; "gloss" — КОЖНЕ слово тексту в нижньому регістрі з перекладом; "qs" — 6–10 питань на розуміння.
+- "forms": 8–12 іменників уроку з усіма формами; "verbs": дієслова уроку з таблицями (якщо в уроці є дієслова).
+- Словацька має бути бездоганною: перевір діакритику (á ä č ď é í ĺ ľ ň ó ô ŕ š ť ú ý ž) і всі форми. Скан може бути нечітким — обирай правильну словацьку форму.
+- Не вигадуй правил, яких немає в уроці. Приклади речень можна свої, прості, побутові.
+
+ID = "g${pad(n)}", TRACK = "g", NUM = ${n}, source = "Пахомова, Джоґанік, с. ${b1}–${b2}".
+
+${SCHEMA_TXT}`;
+}
+function templateVocab(n) {
+  return `Ти допомагаєш двом українцям (Дімі й Наташі) вчити словацьку на рівень B1. Рідна мова українська. Прикріплено презентацію викладачки до заняття з лексики №${n} (таблиці слів, картинки, вправи).
+
+Зроби з неї лексичний урок для нашої навчальної платформи у форматі JSON (схема нижче).
+
+ЗМІСТ:
+- "cards": УСІ слова й вирази з презентації — і з таблиць, і з картинок/скриншотів, — з правильним перекладом українською. Якщо слово на слайді без перекладу, переклади сам.
+- 7 днів по ~5 хв. Дні 1–5 "new": кожен день = одна тема з презентації: "learn" (6–10 карток) + "match" (5 пар) + 2–3 "choice" (значення слова / як сказати словацькою) + 1–2 "input" (напиши словацькою; "sk" = українське слово, без ___). Дні 6–7 "review", "count":8, "tasks":[].
+- Якщо в презентації є граматика або розмовні фрази — додай "cheats" і короткий "rule" у відповідний день.
+- "why" — коротке пояснення українською (пастки на кшталт «byt = квартира, а не "бути"»).
+- Якщо в презентації згадано блоки e-slovak, додай "eslovak":[{"title":"назва блоку і вправи","url":"https://www.e-slovak.sk/"}].
+- "text", "forms", "verbs" для лексики не потрібні (можна не писати).
+- Словацька має бути бездоганною: перевір діакритику.
+
+ID = "v${pad(n)}", TRACK = "v", NUM = ${n}, source = "Презентація викладачки, заняття ${n}".
+
+${SCHEMA_TXT}`;
+}
+function copyText(txt, okMsg) {
+  try { navigator.clipboard.writeText(txt).then(() => toast(okMsg || 'Скопійовано'), () => showCopy(txt)); } catch (e) { showCopy(txt); }
+}
+function showCopy(txt) { const ta = h('textarea', { class: 'txt', readonly: true, 'aria-label': 'Текст для копіювання' }); ta.value = txt; dialog('Скопіюй вручну', h('div', { class: 'col' }, h('p', { class: 'small' }, 'Виділи весь текст (Ctrl+A) і скопіюй (Ctrl+C).'), ta), [['Готово', () => { }]]); setTimeout(() => { ta.focus(); ta.select(); }, 50); }
+
+VIEWS.howto = main => {
+  const gSel = h('select', { class: 'txt', id: 'gnum', style: 'max-width:200px' }, Array.from({ length: 35 }, (_, i) => h('option', { value: i + 1, selected: i + 1 === Math.min(35, S.course + 1) }, 'Урок ' + (i + 1))));
+  const rangeOut = h('p', { class: 'b' });
+  const upd = () => { const n = +gSel.value; const [p1, p2, b1, b2] = pdfRange(n); rangeOut.textContent = 'Книжкові сторінки ' + b1 + '–' + b2 + ' → сторінки PDF: ' + p1 + '–' + p2; };
+  gSel.addEventListener('change', upd); upd();
+  const vNum = h('input', { class: 'txt', id: 'vnum', type: 'number', min: '1', max: '40', value: String(S.course), style: 'max-width:200px' });
+  const step = (n, title, ...body) => h('div', { class: 'li', style: 'align-items:flex-start' }, h('span', { class: 'ico g', style: 'font-weight:900' }, n), h('div', { class: 'col grow', style: 'gap:4px' }, h('span', { class: 'b' }, title), ...body.map(x => typeof x === 'string' ? h('span', { class: 'small' }, rich(x)) : x)));
+  main.append(h('div', { class: 'stack', style: 'max-width:820px' },
+    h('a', { href: '#add', class: 'small b' }, '← Додати урок'),
+    h('h1', null, 'Як додати урок'),
+    h('p', { class: 'muted' }, 'Працює з безкоштовним Claude. Один урок займає ~10 хвилин. Робить будь-хто з вас: урок одразу з\'явиться в обох.'),
+    h('div', { class: 'card' }, h('h2', null, 'Граматика (з підручника)'),
+      h('div', { class: 'row wrap' }, h('label', { for: 'gnum', class: 'b' }, 'Номер уроку:'), gSel), rangeOut,
+      h('div', { class: 'list' },
+        step(1, 'Виріж сторінки з PDF', 'Відкрий PDF підручника в Chrome → **Ctrl+P** → Принтер: **«Зберегти як PDF»** → Сторінки: **«Власні»** → впиши діапазон сторінок PDF, показаний вище → **Зберегти**.'),
+        step(2, 'Новий чат з Claude', 'На claude.ai почни **новий чат**, прикріпи збережений PDF.'),
+        step(3, 'Встав шаблон', h('button', { class: 'btn small', style: 'align-self:flex-start', onclick: () => copyText(templateGrammar(+gSel.value), 'Шаблон скопійовано: встав у чат') }, 'Скопіювати шаблон'), 'Номер уроку вже підставлено. Встав (**Ctrl+V**) і надішли.'),
+        step(4, 'Якщо відповідь з двох частин', 'Після першої частини напиши **далі**. Скопіюй обидві частини (кнопка Copy під кожним повідомленням).'),
+        step(5, 'Перевір на платформі', 'Розділ **«Додати урок»** → встав відповідь (обидві частини в одне поле) → **Перевірити**.'),
+        step(6, 'Якщо є помилки', 'Натисни **«Скопіювати помилки»** і надішли їх у той самий чат: Claude виправить. Потім знову крок 5.'),
+        step(7, 'Збережи', 'Натисни **«Спробувати»** на одному дні, і якщо все гаразд, **«Зберегти урок»**.'))),
+    h('div', { class: 'card' }, h('h2', null, 'Лексика (з презентації)'),
+      h('div', { class: 'row wrap' }, h('label', { for: 'vnum', class: 'b' }, 'Номер заняття:'), vNum),
+      h('div', { class: 'list' },
+        step(1, 'Перетвори презентацію на PDF', 'Відкрий .pptx у PowerPoint або Google Slides → **Файл → Зберегти як / Завантажити → PDF**.'),
+        step(2, 'Новий чат з Claude', 'Почни **новий чат**, прикріпи PDF презентації.'),
+        step(3, 'Встав шаблон', h('button', { class: 'btn small blue', style: 'align-self:flex-start', onclick: () => copyText(templateVocab(Math.max(1, Math.min(40, +vNum.value || 1))), 'Шаблон скопійовано: встав у чат') }, 'Скопіювати шаблон'), 'Встав і надішли.'),
+        step(4, 'Далі як для граматики', 'Кроки 4–7 вище: «Додати урок» → Перевірити → Зберегти.'))),
+    h('div', { class: 'card' }, h('h3', null, 'Підказки'), h('ul', { style: 'margin:0;padding-left:20px;line-height:1.6' },
+      h('li', null, 'Один урок = один новий чат. Так Claude не плутається і менше витрачає ліміт.'),
+      h('li', null, 'Якщо ліміт безкоштовного чату закінчився посеред уроку, продовж наступного дня в тому самому чаті: «далі».'),
+      h('li', null, 'Якщо урок із таким номером уже є, нова версія замінить його вміст, а прогрес залишиться.'),
+      h('li', null, 'Перевіряй словацьку в уроці на занятті: якщо викладачка каже інакше, виправ урок у чаті й збережи ще раз.')))));
 };
 
 /* ---------- старт ---------- */
