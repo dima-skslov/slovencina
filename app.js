@@ -168,10 +168,12 @@ function dueCards() { const t = today(); return Object.keys(S.cards).filter(k =>
 function pickCards(list, n) {
   const cur = new Set([lid('g', S.course), (nextDay('g') || {}).L && nextDay('g').L.id, (nextDay('v') || {}).L && nextDay('v').L.id]);
   const a = shuffle(list.filter(x => cur.has(x.L.id))), b = shuffle(list.filter(x => !cur.has(x.L.id)));
-  const nb = Math.min(b.length, Math.round(n * 0.25)); const out = a.slice(0, n - nb).concat(b.slice(0, nb));
+  const nb = Math.min(b.length, Math.round(n * oldShare())); const out = a.slice(0, n - nb).concat(b.slice(0, nb));
   return shuffle(out.length < n ? out.concat(b.slice(nb, nb + n - out.length)) : out);
 }
 
+/** частка минулих уроків у повторенні: 35%, а при 10+ помилках з минулих уроків — 40% */
+function oldShare() { const cur = new Set([(nextDay('g') || {}).L, (nextDay('v') || {}).L].filter(Boolean).map(L => L.id)); return Object.values(S.mistakes).filter(m => m.lid && !cur.has(m.lid)).length >= 10 ? 0.4 : 0.35; }
 /* ---------- помилки ---------- */
 function addMistake(item) {
   if (!item.mkey) return;
@@ -204,7 +206,7 @@ function mistakeItems(filter) {
   return Object.entries(S.mistakes).filter(([k, m]) => !filter || filter(m)).map(([k, m]) => ({ type: m.task.t, L: C.lessons[m.lid] || null, task: m.task, mkey: k, fromMistakes: true }));
 }
 function reviewItems(L, count) {
-  const nCur = Math.round(count * 0.75);
+  const nCur = Math.round(count * (1 - oldShare()));
   const cards = (L.cards || []).map(c => ({ type: 'flash', L, card: c, key: L.id + ':' + c.id, dir: Math.random() < 0.5 ? 'sk' : 'uk' }));
   const nCards = Math.min(3, cards.length);
   const cur = sample(lessonPool(L), nCur - nCards).concat(sample(cards, nCards));
@@ -224,10 +226,19 @@ function reviewItems(L, count) {
   const seen = new Set(); all = all.filter(x => !x.mkey || (seen.has(x.mkey) ? false : (seen.add(x.mkey), true)));
   return shuffle(all);
 }
+/** міні-повтор на початку нового дня: 3–4 вправи з того, що пройдено 1–3 дні тому */
+const MINI = ['tr', 'build', 'choice', 'input', 'det'];
+function miniReview(L, d) {
+  const from = addDays(today(), -3), t0 = today(), pool = [];
+  Object.values(C.lessons).forEach(X => X.days.forEach(dd => { const dt = S.done[dayKey(X, dd)]; if (dd.kind === 'new' && dt && dt >= from && dt < t0 && !(X.id === L.id && dd.n === d.n)) dd.tasks.forEach((t, i) => { if (MINI.includes(t.t)) pool.push({ type: t.t, L: X, task: t, mkey: X.id + ':' + dd.n + ':' + i, mini: true }); }); }));
+  if (pool.length < 3) L.days.forEach(dd => { if (dd.kind === 'new' && dd.n < d.n) dd.tasks.forEach((t, i) => { if (MINI.includes(t.t)) pool.push({ type: t.t, L, task: t, mkey: L.id + ':' + dd.n + ':' + i, mini: true }); }); });
+  const seen = new Set(); return sample(pool.filter(x => !seen.has(x.mkey) && seen.add(x.mkey)), d.n === 1 && !pool.length ? 0 : 4);
+}
 function dayItems(L, d) {
   let out = [];
   d.tasks.forEach((t, i) => { out = out.concat(expandTask(L, t, L.id + ':' + d.n + ':' + i)); });
   if (d.kind === 'review') out = reviewItems(L, d.count || 10).concat(out);
+  else out = miniReview(L, d).concat(out);
   return out;
 }
 function flashItems(list) { return list.map(x => ({ type: 'flash', L: x.L, card: x.c, key: x.key, dir: Math.random() < 0.6 ? 'sk' : 'uk' })); }
@@ -340,7 +351,7 @@ function showItem() {
   const cb = $('#pl-cheatbtn'); cb.hidden = !cheat; cb.onclick = () => openCheat(it.L, cheat);
   const body = $('#pl-body'); body.replaceChildren(); body.scrollTop = 0;
   const inner = h('div', { class: 'pl-inner' });
-  const kick = it.L ? h('div', { class: 'kicker' + (it.L.track === 'v' ? ' v' : '') }, (it.L.track === 'g' ? 'Граматика' : 'Лексика') + ' · урок ' + it.L.num + (it.fromMistakes ? ' · помилка' : '') + (it.retry ? ' · ще раз' : '')) : null;
+  const kick = it.L ? h('div', { class: 'kicker' + (it.L.track === 'v' ? ' v' : '') }, (it.L.track === 'g' ? 'Граматика' : 'Лексика') + ' · урок ' + it.L.num + (it.fromMistakes ? ' · помилка' : '') + (it.mini ? ' · повтор' : '') + (it.retry ? ' · ще раз' : '')) : null;
   if (kick) inner.append(kick);
   body.append(inner);
   const R = RENDER[it.type];
@@ -787,7 +798,7 @@ document.addEventListener('keydown', e => {
 function streakOf(st) { if (!st) return 0; let d = today(); if (!st.sessions[d]) d = addDays(d, -1); let n = 0; while (st.sessions[d]) { n++; d = addDays(d, -1); } return n; }
 function todayParts() {
   const parts = [];
-  const due = pickCards(dueCards(), 4);
+  const due = pickCards(dueCards(), 6);
   if (due.length) parts.push({ label: 'Картки на повтор', sub: due.length + ' ' + plural(due.length, 'слово', 'слова', 'слів'), ico: 'o', items: flashItems(due) });
   const g = nextDay('g'), v = nextDay('v');
   if (g) parts.push({ key: dayKey(g.L, g.d), label: 'Граматика · урок ' + g.L.num + ', день ' + g.d.n, sub: g.d.title, ico: 'g', items: dayItems(g.L, g.d) });
@@ -1097,7 +1108,7 @@ VIEWS.more = main => {
       CLOUD ? h('div', null, 'Остання синхронізація: ', h('b', null, (SYNC.at || '—') + ' · ' + ({ ok: 'успішно', err: 'ПОМИЛКА ' + SYNC.err, saving: 'триває', local: 'ще не було' }[SYNC.state] || SYNC.state))) : null,
       h('div', null, 'Пройдено днів: ', h('b', null, Object.keys(S.done).length), ' · карток: ', h('b', null, Object.keys(S.cards).length), ' · серія: ', h('b', null, streakOf(S))),
       h('div', null, 'Дні: ', h('b', null, doneSummary() || '—')))),
-    h('p', { class: 'tiny muted' }, (CLOUD ? 'Версія: 1.5 (23.11)' : 'Версія: пілот 0.5') + ' · уроків завантажено: ' + Object.keys(C.lessons).length + (C.errors.length ? ' · помилка завантаження: ' + C.errors.join(', ') : ''))));
+    h('p', { class: 'tiny muted' }, (CLOUD ? 'Версія: 1.6 (23.11)' : 'Версія: пілот 0.5') + ' · уроків завантажено: ' + Object.keys(C.lessons).length + (C.errors.length ? ' · помилка завантаження: ' + C.errors.join(', ') : ''))));
 };
 function showExport(txt) { const ta = h('textarea', { class: 'txt', readonly: true, 'aria-label': 'Копія прогресу' }); ta.value = txt; dialog('Копія прогресу', h('div', { class: 'col' }, h('p', { class: 'small' }, 'Виділи весь текст і скопіюй.'), ta), [['Готово', () => { }]]); }
 function importDialog() {
