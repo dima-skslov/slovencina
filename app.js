@@ -164,7 +164,7 @@ function srsLearn(L, c, knew) { const k = L.id + ':' + c.id; if (S.cards[k] && !
 function srsReview(key, ok) { const c = S.cards[key] || { b: 1 }; c.b = ok ? Math.min(c.b + 1, 6) : 1; c.due = addDays(today(), ok ? SRS_IV[c.b] : 1); S.cards[key] = c; }
 function cardFromKey(key) { const [l, id] = key.split(':'); const L = C.lessons[l]; const c = L && cardById(L, id); return c ? { L, c, key } : null; }
 function dueCards() { const t = today(); return Object.keys(S.cards).filter(k => S.cards[k].due <= t).map(cardFromKey).filter(Boolean); }
-/** 75% картки поточних уроків, 25% старі */
+/** 65% картки поточних уроків, 35% старі (40% при 10+ старих помилках) */
 function pickCards(list, n) {
   const cur = new Set([lid('g', S.course), (nextDay('g') || {}).L && nextDay('g').L.id, (nextDay('v') || {}).L && nextDay('v').L.id]);
   const a = shuffle(list.filter(x => cur.has(x.L.id))), b = shuffle(list.filter(x => !cur.has(x.L.id)));
@@ -910,7 +910,7 @@ VIEWS.lesson = (main, id) => {
     h('div', { class: 'col', style: 'gap:4px' }, h('span', { class: 'kicker' + (L.track === 'v' ? ' v' : '') }, (L.track === 'g' ? 'Граматика' : 'Лексика') + ' · урок ' + L.num), h('h1', { lang: 'sk' }, L.title), h('p', { class: 'muted' }, L.topic), L.source ? h('p', { class: 'tiny muted' }, L.source) : null),
     h('div', { class: 'card' }, dayPath(L)),
     h('div', { class: 'card' }, h('h3', null, 'Дні уроку'), h('div', { class: 'list' }, L.days.map(d => h('div', { class: 'dayrow' },
-      h('div', { class: 'col grow', style: 'gap:0' }, h('span', { class: 'b' }, 'День ' + d.n + ' · ' + d.title), h('span', { class: 'small muted' }, isDone(L, d) ? 'пройдено ' + fmtDate(S.done[dayKey(L, d)]) : d.kind === 'review' ? 'повторення: 75% цей урок, 25% минулі' : 'новий матеріал')),
+      h('div', { class: 'col grow', style: 'gap:0' }, h('span', { class: 'b' }, 'День ' + d.n + ' · ' + d.title), h('span', { class: 'small muted' }, isDone(L, d) ? 'пройдено ' + fmtDate(S.done[dayKey(L, d)]) : d.kind === 'review' ? 'повторення: ' + Math.round((1 - oldShare()) * 100) + '% цей урок, ' + Math.round(oldShare() * 100) + '% минулі' : 'новий матеріал')),
       h('button', { class: 'btn small ' + (isDone(L, d) ? 'ghost' : ''), onclick: () => startDay(L, d) }, isDone(L, d) ? 'Ще раз' : 'Почати'))))),
     (L.cheats || []).length ? h('div', { class: 'card' }, h('h3', null, 'Шпаргалки'), h('div', { class: 'row wrap' }, L.cheats.map(c => h('a', { class: 'chip', href: '#cheat-' + L.id + '-' + c.id }, c.title)))) : null,
     L.text ? h('a', { class: 'card', href: '#read-' + L.id, style: 'text-decoration:none;color:inherit' }, h('div', { class: 'spread' }, h('span', { class: 'b' }, 'Текст: ', h('span', { lang: 'sk' }, L.text.title)), icon('book'))) : null,
@@ -923,7 +923,7 @@ VIEWS.cards = main => {
   const total = Object.keys(S.cards).length;
   main.append(h('div', { class: 'stack' }, h('h1', null, 'Картки'),
     h('div', { class: 'card raised' }, h('div', { class: 'spread' }, h('h2', null, 'На повтор зараз'), h('span', { class: 'badge' }, due.length)),
-      h('p', { class: 'muted small' }, 'Складні слова повертаються частіше: «не згадав» → завтра, «згадав» → через 2, 4, 8… днів. 75% поточні уроки, 25% старі.'),
+      h('p', { class: 'muted small' }, 'Складні слова повертаються частіше: «не згадав» → завтра, «згадав» → через 2, 4, 8… днів. ' + Math.round((1 - oldShare()) * 100) + '% поточні уроки, ' + Math.round(oldShare() * 100) + '% старі (40%, якщо накопичилось 10+ помилок з минулих уроків).'),
       h('button', { class: 'btn wide', disabled: !due.length, onclick: () => startSession({ title: 'Картки повторено', parts: [{ items: flashItems(pickCards(due, 20)) }] }) }, due.length ? 'Повторити' : 'Поки нічого')),
     h('p', { class: 'muted small' }, 'Вивчено слів: ' + total + '. Нові слова додаються в днях уроків.'),
     Object.values(C.lessons).sort((a, b) => a.track.localeCompare(b.track) || a.num - b.num).map(L => h('div', { class: 'card' },
@@ -1108,7 +1108,7 @@ VIEWS.more = main => {
       CLOUD ? h('div', null, 'Остання синхронізація: ', h('b', null, (SYNC.at || '—') + ' · ' + ({ ok: 'успішно', err: 'ПОМИЛКА ' + SYNC.err, saving: 'триває', local: 'ще не було' }[SYNC.state] || SYNC.state))) : null,
       h('div', null, 'Пройдено днів: ', h('b', null, Object.keys(S.done).length), ' · карток: ', h('b', null, Object.keys(S.cards).length), ' · серія: ', h('b', null, streakOf(S))),
       h('div', null, 'Дні: ', h('b', null, doneSummary() || '—')))),
-    h('p', { class: 'tiny muted' }, (CLOUD ? 'Версія: 1.6 (23.11)' : 'Версія: пілот 0.5') + ' · уроків завантажено: ' + Object.keys(C.lessons).length + (C.errors.length ? ' · помилка завантаження: ' + C.errors.join(', ') : ''))));
+    h('p', { class: 'tiny muted' }, (CLOUD ? 'Версія: 1.7 (23.11)' : 'Версія: пілот 0.5') + ' · уроків завантажено: ' + Object.keys(C.lessons).length + (C.errors.length ? ' · помилка завантаження: ' + C.errors.join(', ') : ''))));
 };
 function showExport(txt) { const ta = h('textarea', { class: 'txt', readonly: true, 'aria-label': 'Копія прогресу' }); ta.value = txt; dialog('Копія прогресу', h('div', { class: 'col' }, h('p', { class: 'small' }, 'Виділи весь текст і скопіюй.'), ta), [['Готово', () => { }]]); }
 function importDialog() {
