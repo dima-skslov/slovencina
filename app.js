@@ -6,7 +6,9 @@ const CLOUD = /(^|\.)github\.io$/.test(location.hostname) || location.hostname =
 const PILOT = !CLOUD;
 let UID = null; const OTHER = {}; let SYNC = { state: 'local', err: '' };
 const LESSON_FILES = ['lessons/g09.json', 'lessons/v08.json'];
-const NAMES = { dima: 'Діма', natasha: 'Наташа', marina: 'Марина' };
+const NAMES = { dima: 'Діма', natasha: 'Наташа', marina: 'Марина', vlad: 'Влад' };
+/** кого не показувати у вогниках і календарі активності (переглядачі) */
+const NO_STREAK = { vlad: true };
 /** хто ходить на заняття курсу (вт/ср): картка заняття, розминка, перенесення, нагадування про заняття */
 const ON_COURSE = { dima: true, natasha: true };
 const G_TOPICS = { 1: 'Вступний курс', 2: 'Вступний курс', 3: 'Вступний курс', 4: 'Вступний курс', 5: 'Вступний курс', 7: 'Moja izba', 8: 'Moja rodina · chlap, hrdina', 9: 'Ako vyzerá môj pracovný deň?', 10: 'Ako trávim svoj voľný čas? · stroj', 11: 'žena', 12: 'ulica', 13: 'mesto, srdce' };
@@ -178,7 +180,7 @@ function pushCloud() {
 }
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden' && cloudT) pushCloud(); });
 /** усі інші профілі — для вогників і календаря */
-function othersAll() { return Object.keys(NAMES).filter(p => p !== PROFILE).map(p => { if (CLOUD) return { id: p, st: OTHER[p] || null }; const st = Store.get('p.' + p, null); return { id: p, st: st ? Object.assign(newState(), st) : null }; }); }
+function othersAll() { return Object.keys(NAMES).filter(p => p !== PROFILE && !NO_STREAK[p]).map(p => { if (CLOUD) return { id: p, st: OTHER[p] || null }; const st = Store.get('p.' + p, null); return { id: p, st: st ? Object.assign(newState(), st) : null }; }); }
 function otherState() { const o = PROFILE === 'dima' ? 'natasha' : 'dima'; if (CLOUD) return { id: o, st: OTHER[o] || null }; const st = Store.get('p.' + o, null); return st ? { id: o, st: Object.assign(newState(), st) } : { id: o, st: null }; }
 
 /* ---------- вміст ---------- */
@@ -1178,8 +1180,8 @@ VIEWS.today = main => {
         ...['g', 'v'].map(tr => { const nd = nextDay(tr) || (lessonsOf(tr).length ? { L: lessonsOf(tr)[lessonsOf(tr).length - 1] } : null); if (!nd) return null; const L = nd.L; return h('div', { class: 'card' }, h('div', { class: 'col', style: 'gap:2px' }, h('h3', null, (tr === 'g' ? 'Граматика' : 'Лексика') + ' · урок ' + L.num), h('a', { href: '#lesson-' + L.id, class: 'small b', lang: 'sk' }, L.title)), dayPath(L), PILOT ? h('p', { class: 'tiny muted' }, 'Пілот: будь-який день можна відкрити тапом.') : null); })
       ),
       h('div', { class: 'stack' },
-        h('div', { class: 'streaks' }, [[PROFILE, S], ...othersAll().map(x => [x.id, x.st])].map(([id, st]) => h('div', { class: 'streak' }, icon('flame'), h('div', { class: 'col', style: 'gap:0' }, h('span', { class: 'small b muted' }, NAMES[id]), h('span', { class: 'n' }, st ? streakOf(st) + ' ' + plural(streakOf(st), 'день', 'дні', 'днів') : '—'))))),
-        h('div', { class: 'card' }, h('h3', null, 'Активність за 2 тижні'), h('div', { class: 'cal' }, calendarRow(NAMES[PROFILE], S), othersAll().map(x => calendarRow(NAMES[x.id], x.st)))),
+        h('div', { class: 'streaks' }, [...(NO_STREAK[PROFILE] ? [] : [[PROFILE, S]]), ...othersAll().map(x => [x.id, x.st])].map(([id, st]) => h('div', { class: 'streak' }, icon('flame'), h('div', { class: 'col', style: 'gap:0' }, h('span', { class: 'small b muted' }, NAMES[id]), h('span', { class: 'n' }, st ? streakOf(st) + ' ' + plural(streakOf(st), 'день', 'дні', 'днів') : '—'))))),
+        h('div', { class: 'card' }, h('h3', null, 'Активність за 2 тижні'), h('div', { class: 'cal' }, NO_STREAK[PROFILE] ? null : calendarRow(NAMES[PROFILE], S), othersAll().map(x => calendarRow(NAMES[x.id], x.st)))),
         CLOUD && ON_COURSE[PROFILE] && !Object.keys(S.done).length && !Object.keys(S.cards).length ? h('div', { class: 'card' }, h('h3', null, 'Є прогрес з пілоту?'), h('p', { class: 'small muted' }, 'У пілоті: Налаштування → «Скопіювати копію». Тут: Налаштування → «Відновити з копії».'), h('button', { class: 'btn ghost small', onclick: importDialog }, 'Відновити з копії')) : null,
         !Object.keys(C.lessons).length ? h('a', { class: 'card', href: '#add', style: 'text-decoration:none;color:inherit' }, h('h3', null, 'Уроків ще немає'), h('p', { class: 'small muted' }, 'Додай перший урок: розділ «Додати урок».')) : null,
         mistakeCount() ? h('a', { class: 'card', href: '#mistakes', style: 'text-decoration:none;color:inherit' }, h('div', { class: 'spread' }, h('span', { class: 'b' }, 'Помилки до повторення'), h('span', { class: 'badge' }, mistakeCount()))) : null
@@ -1414,7 +1416,7 @@ VIEWS.more = main => {
       CLOUD ? h('div', null, 'Остання синхронізація: ', h('b', null, (SYNC.at || '—') + ' · ' + ({ ok: 'успішно', err: 'ПОМИЛКА ' + SYNC.err, saving: 'триває', local: 'ще не було' }[SYNC.state] || SYNC.state))) : null,
       h('div', null, 'Пройдено днів: ', h('b', null, Object.keys(S.done).length), ' · карток: ', h('b', null, Object.keys(S.cards).length), ' · серія: ', h('b', null, streakOf(S))),
       h('div', null, 'Дні: ', h('b', null, doneSummary() || '—')))),
-    h('p', { class: 'tiny muted' }, (CLOUD ? 'Версія: 2.4 (24.11)' : 'Версія: пілот 0.5') + ' · уроків завантажено: ' + Object.keys(C.lessons).length + (C.errors.length ? ' · помилка завантаження: ' + C.errors.join(', ') : ''))));
+    h('p', { class: 'tiny muted' }, (CLOUD ? 'Версія: 2.5 (24.11)' : 'Версія: пілот 0.5') + ' · уроків завантажено: ' + Object.keys(C.lessons).length + (C.errors.length ? ' · помилка завантаження: ' + C.errors.join(', ') : ''))));
 };
 function showExport(txt) { const ta = h('textarea', { class: 'txt', readonly: true, 'aria-label': 'Копія прогресу' }); ta.value = txt; dialog('Копія прогресу', h('div', { class: 'col' }, h('p', { class: 'small' }, 'Виділи весь текст і скопіюй.'), ta), [['Готово', () => { }]]); }
 function importDialog() {
@@ -1753,7 +1755,7 @@ function waitCloud(ms) {
 }
 function profilePicker() {
   gate(h('h1', null, 'Хто вчиться?'), h('p', { class: 'muted' }, 'У кожного свій прогрес.'),
-    h('button', { class: 'btn wide', onclick: () => pickP('dima') }, 'Діма'), h('button', { class: 'btn blue wide', onclick: () => pickP('natasha') }, 'Наташа'), h('button', { class: 'btn ghost wide', onclick: () => pickP('marina') }, 'Марина'));
+    h('button', { class: 'btn wide', onclick: () => pickP('dima') }, 'Діма'), h('button', { class: 'btn blue wide', onclick: () => pickP('natasha') }, 'Наташа'), h('button', { class: 'btn ghost wide', onclick: () => pickP('marina') }, 'Марина'), h('button', { class: 'btn ghost wide', onclick: () => pickP('vlad') }, 'Влад'));
   function pickP(p) { ungate(); loadProfile(p); render(); }
 }
 async function cloudBoot() {
