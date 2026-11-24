@@ -36,6 +36,8 @@ window.Cloud = {
   },
   async loadNotify(uid) { const s = await getDoc(doc(db, 'notify', uid)); return s.exists() ? s.data() : null; },
   saveNotify(uid, json) { return setDoc(doc(db, 'notify', uid), { json, email: auth.currentUser.email, updatedAt: serverTimestamp() }); },
+  async loadSlots(uid) { const snap = await getDocs(collection(db, 'sessions', uid, 'slots')); return snap.docs.map(d => ({ id: d.id, json: d.data().json })); },
+  saveSlot(uid, id, json) { return setDoc(doc(db, 'sessions', uid, 'slots', id), { json, email: auth.currentUser.email, updatedAt: serverTimestamp() }); },
   watchProgress(cb, onErr) { return onSnapshot(collection(db, 'progress'), snap => cb(snap.docs.map(d => ({ id: d.id, ...d.data() }))), onErr); }
 };
 window.dispatchEvent(new Event('cloud-ready'));
