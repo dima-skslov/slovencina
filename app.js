@@ -17,6 +17,8 @@ const SRS_IV = [0, 1, 2, 4, 8, 16, 32];
 
 /* ---------- іконки (власні константи) ---------- */
 const I = {
+  sun: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4.5"/><path d="M12 2.5v2M12 19.5v2M4.6 4.6l1.4 1.4M18 18l1.4 1.4M2.5 12h2M19.5 12h2M4.6 19.4L6 18M18 6l1.4-1.4"/></svg>',
+  moon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/></svg>',
   home: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 11l8-7 8 7v9H4z"/><path d="M10 20v-5h4v5"/></svg>',
   path: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="6" cy="18" r="2"/><circle cx="18" cy="6" r="2"/><path d="M8 18h6a4 4 0 0 0 0-8h-4a4 4 0 0 1 0-8h6"/></svg>',
   cards: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="7" width="14" height="12" rx="2"/><path d="M7 4h12a2 2 0 0 1 2 2v10"/></svg>',
@@ -30,7 +32,7 @@ const I = {
   chat: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5h16v11H9l-5 4z"/></svg>',
   link: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 14l4-4M9 7l2-2a4 4 0 0 1 6 6l-2 2M15 17l-2 2a4 4 0 0 1-6-6l2-2"/></svg>',
   gear: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M5 19l2-2M17 7l2-2"/></svg>',
-  flame: '<svg viewBox="0 0 24 24" fill="none" stroke="#B4560A" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3c1 3.5 5 5.5 5 10a5 5 0 0 1-10 0c0-2 1-3.5 2-4.5.3 1.5 1 2.5 2 3 0-3 .5-5.5 1-8.5z"/></svg>',
+  flame: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3c1 3.5 5 5.5 5 10a5 5 0 0 1-10 0c0-2 1-3.5 2-4.5.3 1.5 1 2.5 2 3 0-3 .5-5.5 1-8.5z"/></svg>',
   check: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5 9-10"/></svg>',
   x: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>',
   back: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg>',
@@ -91,6 +93,45 @@ const Store = {
   set(k, v) { mem[k] = clone(v); try { localStorage.setItem('skslov.' + k, JSON.stringify(v)); } catch (e) { /* лише в пам'яті */ } },
   del(k) { delete mem[k]; try { localStorage.removeItem('skslov.' + k); } catch (e) { } }
 };
+
+/* ---------- тема: світла / темна / як у системі (окремо для кожного пристрою) ---------- */
+const darkMQ = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
+const themePref = () => Store.get('theme', 'light');
+const isDark = () => { const t = themePref(); return t === 'dark' || (t === 'auto' && !!darkMQ && darkMQ.matches); };
+function applyTheme() {
+  const dark = isDark();
+  document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+  const m = document.querySelector('meta[name="theme-color"]'); if (m) m.setAttribute('content', dark ? '#0E1411' : '#23854B');
+}
+function setTheme(t) { Store.set('theme', t); applyTheme(); if (typeof render === 'function' && PROFILE && $('#player').hidden) render(); }
+applyTheme();
+if (darkMQ) { try { darkMQ.addEventListener('change', () => { if (themePref() === 'auto') applyTheme(); }); } catch (e) { } }
+
+/* ---------- звуки відповідей: синтезовані у браузері, без файлів ---------- */
+let AC = null;
+function sfx(kind) {
+  if (S && S.settings && S.settings.sound === false) return;
+  const N = {
+    ok: [[880, 0, .14], [1318.5, .085, .32]],
+    almost: [[784, 0, .14], [880, .1, .22]],
+    bad: [[220, 0, .16, 'triangle'], [174.6, .13, .3, 'triangle']],
+    done: [[523.25, 0, .14], [659.25, .11, .14], [783.99, .22, .14], [1046.5, .34, .5]]
+  }[kind]; if (!N) return;
+  try {
+    AC = AC || new (window.AudioContext || window.webkitAudioContext)();
+    if (AC.state === 'suspended') AC.resume();
+    const t0 = AC.currentTime + 0.02, out = AC.createGain(); out.gain.value = kind === 'bad' ? 0.22 : 0.16; out.connect(AC.destination);
+    N.forEach(([f, st, dur, type]) => {
+      [[1, 1], [2, 0.18]].forEach(([mul, vol]) => { /* основний тон + тихий обертон — звук «дзвіночка» */
+        if (type && mul > 1) return;
+        const o = AC.createOscillator(), g = AC.createGain();
+        o.type = type || 'sine'; o.frequency.value = f * mul;
+        g.gain.setValueAtTime(0.0001, t0 + st); g.gain.exponentialRampToValueAtTime(vol, t0 + st + 0.012); g.gain.exponentialRampToValueAtTime(0.0001, t0 + st + dur);
+        o.connect(g); g.connect(out); o.start(t0 + st); o.stop(t0 + st + dur + 0.03);
+      });
+    });
+  } catch (e) { /* без звуку — не страшно */ }
+}
 function newState() { return { v: 1, rev: 0, reset: {}, course: 9, done: {}, sessions: {}, cards: {}, mistakes: {}, texts: [], links: {}, moves: {}, classLog: [], settings: { tts: true } }; }
 let PROFILE = null, S = null;
 function loadProfile(p) { PROFILE = p; S = Object.assign(newState(), Store.get('p.' + p, {})); Store.set('profile', p); oneTimeFixes(); }
@@ -485,6 +526,7 @@ function enablePrimary(on) { const b = $('#pl-primary'); if (b) b.disabled = !on
 /** показати результат. res: {status:'ok'|'almost'|'bad', answer, user, why} */
 function feedback(it, res) {
   const first = !it.answered; it.answered = true;
+  sfx(res.status);
   if (res.status === 'ok') { PL.stats.ok++; if (it.fromMistakes || it.retry) fixMistake(it); }
   else if (res.status === 'almost') { PL.stats.almost++; addMistake(it); }
   else { PL.stats.bad++; addMistake(it); if (!PL.retried.has(PL.i) && !it.retry) { PL.retried.add(PL.i); PL.items.push(Object.assign({}, it, { retry: true, answered: false, part: -1 })); PL.total++; } }
@@ -522,6 +564,7 @@ function endSession() {
   closeCheat(); $('#pl-cheatbtn').hidden = true;
   $('#pl-fill').style.width = '100%';
   const graded = PL.stats.ok + PL.stats.bad + PL.stats.almost;
+  setTimeout(() => sfx('done'), 150);
   $('#pl-body').replaceChildren(h('div', { class: 'pl-inner endscreen' },
     h('div', { class: 'big' }, 'Готово!'),
     h('h2', null, PL.title || 'Сесію завершено'),
@@ -1065,7 +1108,7 @@ VIEWS.today = main => {
   const g = nextDay('g');
   const svT = !doneToday ? savedSession('today') : null, rc = resumeCard();
   main.append(h('div', { class: 'stack' },
-    h('div', { class: 'hello' }, h('div', { class: 'col', style: 'gap:2px' }, h('span', { class: 'muted b small' }, UA_WD[now.getDay()] + ', ' + now.getDate() + ' ' + UA_MONTHS[now.getMonth()]), h('h1', null, 'Привіт, ' + NAMES[PROFILE] + '!')), h('button', { class: 'avatar', 'aria-label': 'Змінити профіль', onclick: switchProfile }, NAMES[PROFILE][0])),
+    h('div', { class: 'hello' }, h('div', { class: 'col', style: 'gap:2px' }, h('span', { class: 'muted b small' }, UA_WD[now.getDay()] + ', ' + now.getDate() + ' ' + UA_MONTHS[now.getMonth()]), h('h1', null, 'Привіт, ' + NAMES[PROFILE] + '!')), h('div', { class: 'row', style: 'gap:8px' }, h('button', { class: 'avatar themebtn', 'aria-label': isDark() ? 'Світла тема' : 'Темна тема', title: isDark() ? 'Світла тема' : 'Темна тема', onclick: () => setTheme(isDark() ? 'light' : 'dark'), html: isDark() ? I.sun : I.moon }), h('button', { class: 'avatar', 'aria-label': 'Змінити профіль', onclick: switchProfile }, NAMES[PROFILE][0]))),
     rc,
     CLOUD && SYNC.state === 'err' ? h('div', { class: 'note' }, 'Прогрес не зберігається в базі: ' + SYNC.err + '. Зроби скриншот і надішли Дімі.') : null,
     h('div', { class: 'grid2' },
@@ -1303,7 +1346,9 @@ VIEWS.more = main => {
       h('div', { class: 'spread' }, h('span', null, 'Профіль: ', h('b', null, NAMES[PROFILE]), CLOUD && window.Cloud ? ' (' + (window.Cloud.email || '') + ')' : ''), h('button', { class: 'btn ghost small', onclick: switchProfile }, CLOUD ? 'Вийти' : 'Змінити')),
       CLOUD ? h('div', { class: 'spread' }, h('span', null, 'Синхронізація: ', h('b', null, { ok: 'збережено', saving: 'зберігаю…', err: 'помилка (' + SYNC.err + ')', local: 'очікує' }[SYNC.state] || SYNC.state)), h('button', { class: 'btn ghost small', onclick: () => { pushCloud(); toast('Зберігаю…'); } }, 'Зберегти зараз')) : null,
       !ON_COURSE[PROFILE] ? null : h('div', { class: 'spread' }, h('span', null, 'Курс зараз на уроці: ', h('b', null, S.course)), h('button', { class: 'btn ghost small', onclick: chooseCourse }, 'Змінити')),
-      h('div', { class: 'spread' }, h('span', null, 'Озвучка: ', h('b', null, SK_VOICE ? (S.settings.tts === false ? 'вимкнено' : 'увімкнено (' + SK_VOICE.name + ')') : 'немає словацького голосу в системі')), SK_VOICE ? h('button', { class: 'btn ghost small', onclick: () => { S.settings.tts = S.settings.tts === false; save(); render(); } }, S.settings.tts === false ? 'Увімкнути' : 'Вимкнути') : null)),
+      h('div', { class: 'spread' }, h('span', null, 'Озвучка: ', h('b', null, SK_VOICE ? (S.settings.tts === false ? 'вимкнено' : 'увімкнено (' + SK_VOICE.name + ')') : 'немає словацького голосу в системі')), SK_VOICE ? h('button', { class: 'btn ghost small', onclick: () => { S.settings.tts = S.settings.tts === false; save(); render(); } }, S.settings.tts === false ? 'Увімкнути' : 'Вимкнути') : null),
+      h('div', { class: 'spread' }, h('span', null, 'Звуки відповідей: ', h('b', null, S.settings.sound === false ? 'вимкнено' : 'увімкнено')), h('button', { class: 'btn ghost small', onclick: () => { S.settings.sound = S.settings.sound === false; save(); render(); if (S.settings.sound !== false) sfx('ok'); } }, S.settings.sound === false ? 'Увімкнути' : 'Вимкнути')),
+      h('div', { class: 'spread wrap' }, h('span', null, 'Тема'), h('div', { class: 'row', style: 'gap:6px' }, [['light', 'Світла'], ['dark', 'Темна'], ['auto', 'Як у системі']].map(([v, l]) => h('button', { class: 'chip' + (themePref() === v ? ' on' : ''), 'aria-pressed': themePref() === v ? 'true' : 'false', onclick: () => setTheme(v) }, l))))),
     notifyCard(),
     h('div', { class: 'card' }, h('h3', null, 'Резервна копія прогресу'), h('p', { class: 'small muted' }, CLOUD ? 'Прогрес зберігається в базі. Сюди можна вставити копію з пілоту, щоб перенести пройдене.' : 'Поки немає Firebase, прогрес лежить лише в цьому браузері. Копію можна зберегти як текст.'),
       h('div', { class: 'row wrap' },
@@ -1317,7 +1362,7 @@ VIEWS.more = main => {
       CLOUD ? h('div', null, 'Остання синхронізація: ', h('b', null, (SYNC.at || '—') + ' · ' + ({ ok: 'успішно', err: 'ПОМИЛКА ' + SYNC.err, saving: 'триває', local: 'ще не було' }[SYNC.state] || SYNC.state))) : null,
       h('div', null, 'Пройдено днів: ', h('b', null, Object.keys(S.done).length), ' · карток: ', h('b', null, Object.keys(S.cards).length), ' · серія: ', h('b', null, streakOf(S))),
       h('div', null, 'Дні: ', h('b', null, doneSummary() || '—')))),
-    h('p', { class: 'tiny muted' }, (CLOUD ? 'Версія: 2.2 (24.11)' : 'Версія: пілот 0.5') + ' · уроків завантажено: ' + Object.keys(C.lessons).length + (C.errors.length ? ' · помилка завантаження: ' + C.errors.join(', ') : ''))));
+    h('p', { class: 'tiny muted' }, (CLOUD ? 'Версія: 2.3 (24.11)' : 'Версія: пілот 0.5') + ' · уроків завантажено: ' + Object.keys(C.lessons).length + (C.errors.length ? ' · помилка завантаження: ' + C.errors.join(', ') : ''))));
 };
 function showExport(txt) { const ta = h('textarea', { class: 'txt', readonly: true, 'aria-label': 'Копія прогресу' }); ta.value = txt; dialog('Копія прогресу', h('div', { class: 'col' }, h('p', { class: 'small' }, 'Виділи весь текст і скопіюй.'), ta), [['Готово', () => { }]]); }
 function importDialog() {
