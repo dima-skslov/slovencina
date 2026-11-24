@@ -12,7 +12,7 @@ const firebaseConfig = {
   appId: '1:4354573883:web:4cb0b0070435001dd4fe1e'
 };
 /* Той самий білий список, що й у правилах Firestore. Справжній захист у правилах, тут лише зручність. */
-const ALLOWED = { 'saklakovdmitrij256@gmail.com': 'dima', 'akimaaqa@gmail.com': 'natasha' };
+const ALLOWED = { 'saklakovdmitrij256@gmail.com': 'dima', 'akimaaqa@gmail.com': 'natasha', 'marinasaklakova8@gmail.com': 'marina' };
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);

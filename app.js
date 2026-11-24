@@ -6,7 +6,9 @@ const CLOUD = /(^|\.)github\.io$/.test(location.hostname) || location.hostname =
 const PILOT = !CLOUD;
 let UID = null; const OTHER = {}; let SYNC = { state: 'local', err: '' };
 const LESSON_FILES = ['lessons/g09.json', 'lessons/v08.json'];
-const NAMES = { dima: 'Діма', natasha: 'Наташа' };
+const NAMES = { dima: 'Діма', natasha: 'Наташа', marina: 'Марина' };
+/** хто ходить на заняття курсу (вт/ср): картка заняття, розминка, перенесення, нагадування про заняття */
+const ON_COURSE = { dima: true, natasha: true };
 const G_TOPICS = { 1: 'Вступний курс', 2: 'Вступний курс', 3: 'Вступний курс', 4: 'Вступний курс', 5: 'Вступний курс', 7: 'Moja izba', 8: 'Moja rodina · chlap, hrdina', 9: 'Ako vyzerá môj pracovný deň?', 10: 'Ako trávim svoj voľný čas? · stroj', 11: 'žena', 12: 'ulica', 13: 'mesto, srdce' };
 const V_NUMS = [1, 2, 3, 4, 5, 7, 8];
 const V_TOPICS = { 1: 'Абетка, вимова, знайомство', 2: 'М\'якість, tykanie/vykanie, професії', 3: 'Kto je to? Прізвища, країни', 4: 'Дієслова, числівники', 5: 'Числівники', 7: 'Кімната, родина', 8: 'Місто' };
@@ -134,6 +136,8 @@ function pushCloud() {
   window.Cloud.saveProgress(UID, NAMES[PROFILE], S).then(() => { SYNC = { state: 'ok', err: '', at: new Date().toLocaleTimeString('uk-UA') }; }, e => { SYNC = { state: 'err', err: e.code || e.message, at: new Date().toLocaleTimeString('uk-UA') }; toast('Прогрес не синхронізувався: ' + SYNC.err); if ($('#player').hidden) render(); });
 }
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden' && cloudT) pushCloud(); });
+/** усі інші профілі — для вогників і календаря */
+function othersAll() { return Object.keys(NAMES).filter(p => p !== PROFILE).map(p => { if (CLOUD) return { id: p, st: OTHER[p] || null }; const st = Store.get('p.' + p, null); return { id: p, st: st ? Object.assign(newState(), st) : null }; }); }
 function otherState() { const o = PROFILE === 'dima' ? 'natasha' : 'dima'; if (CLOUD) return { id: o, st: OTHER[o] || null }; const st = Store.get('p.' + o, null); return st ? { id: o, st: Object.assign(newState(), st) } : { id: o, st: null }; }
 
 /* ---------- вміст ---------- */
@@ -305,7 +309,7 @@ function chooseCourse() {
 }
 function switchProfile() {
   if (CLOUD) { dialog('Вийти з акаунта?', h('p', null, 'Прогрес збережено в базі. Увійти знову можна через Google.'), [['Скасувати', () => { }, 'ghost'], ['Вийти', () => { pushCloud(); window.Cloud.signOut(); }, 'orange']]); return; }
-  dialog('Хто зараз вчиться?', h('p', { class: 'muted' }, 'У кожного свій прогрес. Після підключення Firebase вхід буде через Google.'), [['Діма', () => { loadProfile('dima'); render(); }, PROFILE === 'dima' ? '' : 'ghost'], ['Наташа', () => { loadProfile('natasha'); render(); }, PROFILE === 'natasha' ? '' : 'ghost']]);
+  dialog('Хто зараз вчиться?', h('p', { class: 'muted' }, 'У кожного свій прогрес. Після підключення Firebase вхід буде через Google.'), Object.keys(NAMES).map(p => [NAMES[p], () => { loadProfile(p); render(); }, PROFILE === p ? '' : 'ghost']));
 }
 
 /* ---------- озвучка (лише якщо є словацький голос) ---------- */
@@ -1073,15 +1077,15 @@ VIEWS.today = main => {
           !doneToday && parts.length ? h('button', { class: 'btn wide', onclick: startToday }, svT ? 'Продовжити · ' + svT.done + '/' + svT.total : 'Почати') : null,
           doneToday && PILOT && parts.length ? h('button', { class: 'btn ghost wide', onclick: startToday }, 'Пілот: пройти наступну сесію') : null
         ),
-        classCard(),
-        h('div', { class: 'soft spread' }, h('span', { class: 'b' }, 'Ми на курсі зараз: ', h('span', null, 'урок ' + S.course)), h('button', { class: 'link', onclick: chooseCourse }, 'змінити')),
-        g && g.L.num < S.course ? h('div', { class: 'note spread' }, h('span', null, 'Курс уже на уроці ' + S.course + '. Платформа чекає на тебе на уроці ' + g.L.num + '.'), C.lessons[lid('g', S.course)] ? h('button', { class: 'btn small orange', onclick: () => go('lesson-' + lid('g', S.course)) }, 'Урок ' + S.course) : null) : null,
+        ON_COURSE[PROFILE] ? classCard() : null,
+        !ON_COURSE[PROFILE] ? null : h('div', { class: 'soft spread' }, h('span', { class: 'b' }, 'Ми на курсі зараз: ', h('span', null, 'урок ' + S.course)), h('button', { class: 'link', onclick: chooseCourse }, 'змінити')),
+        ON_COURSE[PROFILE] && g && g.L.num < S.course ? h('div', { class: 'note spread' }, h('span', null, 'Курс уже на уроці ' + S.course + '. Платформа чекає на тебе на уроці ' + g.L.num + '.'), C.lessons[lid('g', S.course)] ? h('button', { class: 'btn small orange', onclick: () => go('lesson-' + lid('g', S.course)) }, 'Урок ' + S.course) : null) : null,
         ...['g', 'v'].map(tr => { const nd = nextDay(tr) || (lessonsOf(tr).length ? { L: lessonsOf(tr)[lessonsOf(tr).length - 1] } : null); if (!nd) return null; const L = nd.L; return h('div', { class: 'card' }, h('div', { class: 'col', style: 'gap:2px' }, h('h3', null, (tr === 'g' ? 'Граматика' : 'Лексика') + ' · урок ' + L.num), h('a', { href: '#lesson-' + L.id, class: 'small b', lang: 'sk' }, L.title)), dayPath(L), PILOT ? h('p', { class: 'tiny muted' }, 'Пілот: будь-який день можна відкрити тапом.') : null); })
       ),
       h('div', { class: 'stack' },
-        h('div', { class: 'streaks' }, [[PROFILE, S], [o.id, o.st]].map(([id, st]) => h('div', { class: 'streak' }, icon('flame'), h('div', { class: 'col', style: 'gap:0' }, h('span', { class: 'small b muted' }, NAMES[id]), h('span', { class: 'n' }, st ? streakOf(st) + ' ' + plural(streakOf(st), 'день', 'дні', 'днів') : '—'))))),
-        h('div', { class: 'card' }, h('h3', null, 'Активність за 2 тижні'), h('div', { class: 'cal' }, calendarRow(NAMES[PROFILE], S), calendarRow(NAMES[o.id], o.st)), !o.st ? h('p', { class: 'tiny muted' }, NAMES[o.id] + ': з\'явиться після підключення Firebase (або якщо ' + (o.id === 'natasha' ? 'вона' : 'він') + ' вчиться в цьому ж браузері).') : null),
-        CLOUD && !Object.keys(S.done).length && !Object.keys(S.cards).length ? h('div', { class: 'card' }, h('h3', null, 'Є прогрес з пілоту?'), h('p', { class: 'small muted' }, 'У пілоті: Налаштування → «Скопіювати копію». Тут: Налаштування → «Відновити з копії».'), h('button', { class: 'btn ghost small', onclick: importDialog }, 'Відновити з копії')) : null,
+        h('div', { class: 'streaks' }, [[PROFILE, S], ...othersAll().map(x => [x.id, x.st])].map(([id, st]) => h('div', { class: 'streak' }, icon('flame'), h('div', { class: 'col', style: 'gap:0' }, h('span', { class: 'small b muted' }, NAMES[id]), h('span', { class: 'n' }, st ? streakOf(st) + ' ' + plural(streakOf(st), 'день', 'дні', 'днів') : '—'))))),
+        h('div', { class: 'card' }, h('h3', null, 'Активність за 2 тижні'), h('div', { class: 'cal' }, calendarRow(NAMES[PROFILE], S), othersAll().map(x => calendarRow(NAMES[x.id], x.st)))),
+        CLOUD && ON_COURSE[PROFILE] && !Object.keys(S.done).length && !Object.keys(S.cards).length ? h('div', { class: 'card' }, h('h3', null, 'Є прогрес з пілоту?'), h('p', { class: 'small muted' }, 'У пілоті: Налаштування → «Скопіювати копію». Тут: Налаштування → «Відновити з копії».'), h('button', { class: 'btn ghost small', onclick: importDialog }, 'Відновити з копії')) : null,
         !Object.keys(C.lessons).length ? h('a', { class: 'card', href: '#add', style: 'text-decoration:none;color:inherit' }, h('h3', null, 'Уроків ще немає'), h('p', { class: 'small muted' }, 'Додай перший урок: розділ «Додати урок».')) : null,
         mistakeCount() ? h('a', { class: 'card', href: '#mistakes', style: 'text-decoration:none;color:inherit' }, h('div', { class: 'spread' }, h('span', { class: 'b' }, 'Помилки до повторення'), h('span', { class: 'badge' }, mistakeCount()))) : null
       )
@@ -1298,7 +1302,7 @@ VIEWS.more = main => {
     h('div', { class: 'card' },
       h('div', { class: 'spread' }, h('span', null, 'Профіль: ', h('b', null, NAMES[PROFILE]), CLOUD && window.Cloud ? ' (' + (window.Cloud.email || '') + ')' : ''), h('button', { class: 'btn ghost small', onclick: switchProfile }, CLOUD ? 'Вийти' : 'Змінити')),
       CLOUD ? h('div', { class: 'spread' }, h('span', null, 'Синхронізація: ', h('b', null, { ok: 'збережено', saving: 'зберігаю…', err: 'помилка (' + SYNC.err + ')', local: 'очікує' }[SYNC.state] || SYNC.state)), h('button', { class: 'btn ghost small', onclick: () => { pushCloud(); toast('Зберігаю…'); } }, 'Зберегти зараз')) : null,
-      h('div', { class: 'spread' }, h('span', null, 'Курс зараз на уроці: ', h('b', null, S.course)), h('button', { class: 'btn ghost small', onclick: chooseCourse }, 'Змінити')),
+      !ON_COURSE[PROFILE] ? null : h('div', { class: 'spread' }, h('span', null, 'Курс зараз на уроці: ', h('b', null, S.course)), h('button', { class: 'btn ghost small', onclick: chooseCourse }, 'Змінити')),
       h('div', { class: 'spread' }, h('span', null, 'Озвучка: ', h('b', null, SK_VOICE ? (S.settings.tts === false ? 'вимкнено' : 'увімкнено (' + SK_VOICE.name + ')') : 'немає словацького голосу в системі')), SK_VOICE ? h('button', { class: 'btn ghost small', onclick: () => { S.settings.tts = S.settings.tts === false; save(); render(); } }, S.settings.tts === false ? 'Увімкнути' : 'Вимкнути') : null)),
     notifyCard(),
     h('div', { class: 'card' }, h('h3', null, 'Резервна копія прогресу'), h('p', { class: 'small muted' }, CLOUD ? 'Прогрес зберігається в базі. Сюди можна вставити копію з пілоту, щоб перенести пройдене.' : 'Поки немає Firebase, прогрес лежить лише в цьому браузері. Копію можна зберегти як текст.'),
@@ -1313,7 +1317,7 @@ VIEWS.more = main => {
       CLOUD ? h('div', null, 'Остання синхронізація: ', h('b', null, (SYNC.at || '—') + ' · ' + ({ ok: 'успішно', err: 'ПОМИЛКА ' + SYNC.err, saving: 'триває', local: 'ще не було' }[SYNC.state] || SYNC.state))) : null,
       h('div', null, 'Пройдено днів: ', h('b', null, Object.keys(S.done).length), ' · карток: ', h('b', null, Object.keys(S.cards).length), ' · серія: ', h('b', null, streakOf(S))),
       h('div', null, 'Дні: ', h('b', null, doneSummary() || '—')))),
-    h('p', { class: 'tiny muted' }, (CLOUD ? 'Версія: 2.1 (24.11)' : 'Версія: пілот 0.5') + ' · уроків завантажено: ' + Object.keys(C.lessons).length + (C.errors.length ? ' · помилка завантаження: ' + C.errors.join(', ') : ''))));
+    h('p', { class: 'tiny muted' }, (CLOUD ? 'Версія: 2.2 (24.11)' : 'Версія: пілот 0.5') + ' · уроків завантажено: ' + Object.keys(C.lessons).length + (C.errors.length ? ' · помилка завантаження: ' + C.errors.join(', ') : ''))));
 };
 function showExport(txt) { const ta = h('textarea', { class: 'txt', readonly: true, 'aria-label': 'Копія прогресу' }); ta.value = txt; dialog('Копія прогресу', h('div', { class: 'col' }, h('p', { class: 'small' }, 'Виділи весь текст і скопіюй.'), ta), [['Готово', () => { }]]); }
 function importDialog() {
@@ -1345,7 +1349,7 @@ function ntDoc() {
   const sess = Object.keys(S.sessions || {}).sort(), cut = addDays(today(), -60), moves = {};
   Object.entries(allMoves()).forEach(([k, v]) => { if (k >= cut) moves[k] = v; });
   let tz = 'Europe/Kyiv'; try { tz = Intl.DateTimeFormat().resolvedOptions().timeZone || tz; } catch (e) { }
-  return { v: 1, name: PROFILE, tz, on: !!NT.on, daily: NT.dailyOn ? NT.daily : '', cls: NT.cls || 0, devices: NT.devices, done: sess[sess.length - 1] || '', next, lessons, sched: { days: CLASSES, h: CLASS_TIME[0], m: CLASS_TIME[1] }, moves, test: NT.test || 0 };
+  return { v: 1, name: PROFILE, tz, on: !!NT.on, daily: NT.dailyOn ? NT.daily : '', cls: ON_COURSE[PROFILE] ? NT.cls || 0 : 0, devices: NT.devices, done: sess[sess.length - 1] || '', next, lessons, sched: { days: CLASSES, h: CLASS_TIME[0], m: CLASS_TIME[1] }, moves, test: NT.test || 0 };
 }
 function ntSync(now) {
   if (!(CLOUD && UID && window.Cloud && window.Cloud.saveNotify && NT.loaded)) return;
@@ -1407,8 +1411,8 @@ function notifyCard() {
     h('div', { class: 'col', style: 'gap:12px;opacity:' + (NT.on ? 1 : .55) },
       h('div', { class: 'spread wrap', style: 'gap:8px' }, chk(NT.dailyOn, v => { ntSet({ dailyOn: v }); render(); }, 'Щоденне нагадування о'), tIn),
       h('p', { class: 'tiny muted', style: 'margin:-6px 0 0' }, 'Не прийде, якщо день на сьогодні вже пройдено.'),
-      h('div', { class: 'spread wrap', style: 'gap:8px' }, chk(NT.cls > 0, v => { ntSet({ cls: v ? 60 : 0 }); render(); }, 'Про заняття за'), cSel),
-      h('p', { class: 'tiny muted', style: 'margin:-6px 0 0' }, 'Враховує перенесення й скасування.')),
+      ON_COURSE[PROFILE] ? h('div', { class: 'spread wrap', style: 'gap:8px' }, chk(NT.cls > 0, v => { ntSet({ cls: v ? 60 : 0 }); render(); }, 'Про заняття за'), cSel) : null,
+      ON_COURSE[PROFILE] ? h('p', { class: 'tiny muted', style: 'margin:-6px 0 0' }, 'Враховує перенесення й скасування.') : null),
     chk(!NT.on, v => { ntSet({ on: !v }, true); render(); toast(v ? 'Усі сповіщення вимкнено' : 'Сповіщення знову увімкнено'); }, 'Вимкнути всі сповіщення'),
     h('div', { class: 'spread' }, h('span', { class: 'small muted' }, nDev ? 'Пристроїв зі сповіщеннями: ' + nDev + ' (' + Object.values(NT.devices).map(d => d.ua).join(', ') + ')' : 'Сповіщення ще не увімкнено на жодному пристрої.'),
       h('button', { class: 'btn ghost small', disabled: !nDev || !NT.on, onclick: () => { ntSet({ test: Date.now() }, true); toast('Тестове сповіщення прийде протягом хвилини'); } }, 'Перевірити')));
@@ -1652,7 +1656,7 @@ function waitCloud(ms) {
 }
 function profilePicker() {
   gate(h('h1', null, 'Хто вчиться?'), h('p', { class: 'muted' }, 'У кожного свій прогрес.'),
-    h('button', { class: 'btn wide', onclick: () => pickP('dima') }, 'Діма'), h('button', { class: 'btn blue wide', onclick: () => pickP('natasha') }, 'Наташа'));
+    h('button', { class: 'btn wide', onclick: () => pickP('dima') }, 'Діма'), h('button', { class: 'btn blue wide', onclick: () => pickP('natasha') }, 'Наташа'), h('button', { class: 'btn ghost wide', onclick: () => pickP('marina') }, 'Марина'));
   function pickP(p) { ungate(); loadProfile(p); render(); }
 }
 async function cloudBoot() {
