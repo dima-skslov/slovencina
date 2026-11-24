@@ -674,11 +674,63 @@ RENDER.choice = (it, root) => {
   return { primary: { label: 'Перевірити', fn: check, disabled: true, keys: 'Enter · перевірити · 1–' + t.o.length + ' · варіанти' }, keys: e => { const n = parseInt(e.key, 10); if (n >= 1 && n <= btns.length) { pick(n - 1); return true; } if (e.key === 'Enter') { if (!PL.ctl.locked) { check(); return true; } } } };
 };
 
+/* ---------- слово для пропуску: переклад видно одразу, словацьке слово й переклад речення — за «Підказкою» ----------
+   Беремо з поля завдання (wuk / wsk), а якщо їх немає — з карток, форм, дієслів і словника текстів уроків. */
+const CYR = /[а-яіїєґ]/i;
+const PRON = ['ja', 'ty', 'on', 'ona', 'ono', 'my', 'vy', 'oni', 'ony'];
+const PRON_UK = ['я', 'ти', 'він', 'вона', 'воно', 'ми', 'ви', 'вони'];
+const ORD_UK = ['', 'перший', 'другий', 'третій', 'четвертий', "п'ятий", 'шостий', 'сьомий', 'восьмий', "дев'ятий", 'десятий'];
+const NUM_UK = ['', 'один', 'два', 'три', 'чотири', "п'ять", 'шість', 'сім', 'вісім', "дев'ять", 'десять'];
+/** слова, яких немає в картках і словниках уроків */
+const LEX_EXTRA = { server: 'сервер', krakov: 'Краків', cudzí: 'іноземний, чужий', vták: 'птах', čakať: 'чекати', pozerať: 'дивитися', univerzita: 'університет', koruna: 'крона', budova: 'будівля', začať: 'почати', koza: 'коза', verdi: 'Верді', sedieť: 'сидіти', povedať: 'сказати', jesť: 'їсти', buďte: 'будьте', dvoje: 'двоє', pomalé: 'повільне', vybitý: 'розряджений', kiež: 'хоч би' };
+const cleanUk = x => String(x || '').split(/[:;]/)[0].replace(/\([^)]*\)/g, '').replace(/\s+/g, ' ').trim();
+function lexLookup(L, key) {
+  const k = String(key || '').toLowerCase().normalize('NFC').trim(); if (!k || k === 'si' || k === 'sa') return null;
+  const Ls = [L].concat(Object.values(C.lessons).filter(x => x !== L));
+  for (const X of Ls) {
+    if (!X) continue;
+    for (const f of X.forms || []) if (f.lemma.toLowerCase() === k || (f.sg || []).concat(f.pl || []).some(w => String(w).toLowerCase() === k)) return { sk: f.lemma, uk: f.uk };
+    for (const v of X.verbs || []) if (v.lemma.toLowerCase() === k || (v.pres || []).concat(v.fut || []).some(w => String(w).toLowerCase() === k)) return { sk: v.lemma, uk: v.uk };
+    for (const c of X.cards || []) {
+      const parts = String(c.sk).toLowerCase().normalize('NFC').split(/\s*\/\s*/).map(x => x.split(/\s*[,(]\s*/)[0].trim());
+      const i = parts.indexOf(k); if (i < 0) continue;
+      const ukp = String(c.uk).split(/\s*\/\s*/);
+      return { sk: String(c.sk).split(/\s*\/\s*/)[i] || c.sk, uk: ukp.length === parts.length ? ukp[i] : c.uk };
+    }
+  }
+  if (LEX_EXTRA[k]) return { sk: k, uk: LEX_EXTRA[k] };
+  for (const X of Ls) { const g = X && X.text && X.text.gloss; if (g && g[k]) { const m = /від\s+([a-záäčďéíĺľňóôŕšťúýž]+)/i.exec(g[k]); return { sk: m ? m[1] : null, uk: g[k] }; } }
+  return null;
+}
+/** { uk: переклад слова (видно одразу), sk: словацька основа, note: оригінальна підказка } */
+function blankWord(L, t) {
+  const hint = String(t.hint || '').trim(), first = hint.replace(/\([^)]*\)/g, '').split(',')[0].trim();
+  const out = { uk: t.wuk || '', sk: t.wsk || '', note: hint };
+  if (!out.uk) {
+    if (first && CYR.test(first) && !PRON_UK.includes(first.toLowerCase())) {
+      out.uk = cleanUk(first);
+      const m = /\(([^)]*[a-záäčďéíĺľňóôŕšťúýž][^)]*)\)/i.exec(hint); if (m && !out.sk) out.sk = m[1].split(',')[0].trim();
+    } else if (/^\d+[.:]?\d*$/.test(first)) {
+      const n = parseInt(first, 10);
+      out.uk = first.includes(':') ? '' : (/\.$/.test(first) ? ORD_UK[n] : NUM_UK[n]) || first;
+    } else {
+      const lemma = first && !PRON.includes(first.toLowerCase()) && !PRON_UK.includes(first.toLowerCase()) ? first : '';
+      const r = lexLookup(L, lemma) || lexLookup(L, (t.a || [])[0]);
+      if (r) { out.uk = cleanUk(r.uk); if (!out.sk) out.sk = lemma || r.sk || ''; }
+      else if (lemma && !out.sk) out.sk = lemma;
+    }
+    if (!out.uk) { const r = lexLookup(L, (t.a || [])[0]); if (r) out.uk = cleanUk(r.uk); }
+  }
+  return out;
+}
+
 RENDER.input = (it, root) => {
   const t = it.task;
   put(root, h('h1', null, t.q || 'Напиши відповідь'));
   const sentEl = sentence(t.sk); put(root, sentEl);
-  const hw = hintEl(t); if (hw) put(root, hw);
+  const bw = String(t.sk || '').includes('___') ? blankWord(it.L, t) : null;
+  if (bw && bw.uk) put(root, h('div', { class: 'wordhint' }, 'Слово: ', h('b', null, bw.uk)));
+  const hw = hintEl(bw && bw.uk ? { hint: CYR.test(bw.note.replace(/\([^)]*\)/g, '').split(',')[0]) ? bw.sk : bw.note, uk: t.uk } : t); if (hw) put(root, hw);
   const inp = h('input', { class: 'answer', id: 'ans', type: 'text', autocomplete: 'off', autocapitalize: 'off', spellcheck: 'false', lang: 'sk', 'aria-label': 'Твоя відповідь', oninput: () => enablePrimary(inp.value.trim().length > 0) });
   put(root, h('div', { class: 'col' }, h('label', { for: 'ans', class: 'small b muted' }, 'Твоя відповідь'), inp, diaBar(inp)));
   function check() {
@@ -1362,7 +1414,7 @@ VIEWS.more = main => {
       CLOUD ? h('div', null, 'Остання синхронізація: ', h('b', null, (SYNC.at || '—') + ' · ' + ({ ok: 'успішно', err: 'ПОМИЛКА ' + SYNC.err, saving: 'триває', local: 'ще не було' }[SYNC.state] || SYNC.state))) : null,
       h('div', null, 'Пройдено днів: ', h('b', null, Object.keys(S.done).length), ' · карток: ', h('b', null, Object.keys(S.cards).length), ' · серія: ', h('b', null, streakOf(S))),
       h('div', null, 'Дні: ', h('b', null, doneSummary() || '—')))),
-    h('p', { class: 'tiny muted' }, (CLOUD ? 'Версія: 2.3 (24.11)' : 'Версія: пілот 0.5') + ' · уроків завантажено: ' + Object.keys(C.lessons).length + (C.errors.length ? ' · помилка завантаження: ' + C.errors.join(', ') : ''))));
+    h('p', { class: 'tiny muted' }, (CLOUD ? 'Версія: 2.4 (24.11)' : 'Версія: пілот 0.5') + ' · уроків завантажено: ' + Object.keys(C.lessons).length + (C.errors.length ? ' · помилка завантаження: ' + C.errors.join(', ') : ''))));
 };
 function showExport(txt) { const ta = h('textarea', { class: 'txt', readonly: true, 'aria-label': 'Копія прогресу' }); ta.value = txt; dialog('Копія прогресу', h('div', { class: 'col' }, h('p', { class: 'small' }, 'Виділи весь текст і скопіюй.'), ta), [['Готово', () => { }]]); }
 function importDialog() {

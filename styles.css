@@ -329,3 +329,5 @@ textarea.answer{height:auto;resize:vertical;min-height:62px;line-height:1.4;padd
 .themebtn svg{width:22px;height:22px}
 .streak .svgi{color:var(--flame)}
 :root[data-theme="dark"] .themebtn{color:#F2C94C}
+.wordhint{align-self:flex-start;background:var(--blue-l);color:var(--blue-ink);border-radius:12px;padding:8px 12px;font-size:17px;font-weight:700}
+.wordhint b{font-weight:900}
