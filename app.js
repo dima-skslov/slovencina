@@ -89,7 +89,7 @@ const Store = {
   set(k, v) { mem[k] = clone(v); try { localStorage.setItem('skslov.' + k, JSON.stringify(v)); } catch (e) { /* лише в пам'яті */ } },
   del(k) { delete mem[k]; try { localStorage.removeItem('skslov.' + k); } catch (e) { } }
 };
-function newState() { return { v: 1, rev: 0, reset: {}, course: 9, done: {}, sessions: {}, cards: {}, mistakes: {}, texts: [], links: {}, settings: { tts: true } }; }
+function newState() { return { v: 1, rev: 0, reset: {}, course: 9, done: {}, sessions: {}, cards: {}, mistakes: {}, texts: [], links: {}, moves: {}, classLog: [], settings: { tts: true } }; }
 let PROFILE = null, S = null;
 function loadProfile(p) { PROFILE = p; S = Object.assign(newState(), Store.get('p.' + p, {})); Store.set('profile', p); }
 let cloudT = null;
@@ -107,6 +107,8 @@ function mergeState(a, b) {
   Object.entries(newer.cards || {}).forEach(([k, c]) => { const o = out.cards[k]; if (!o || String(c.due || '') >= String(o.due || '')) out.cards[k] = c; });
   const tx = {}; (older.texts || []).forEach(t => { tx[t.id] = t; }); (newer.texts || []).forEach(t => { tx[t.id] = t; }); out.texts = Object.values(tx);
   out.links = Object.assign({}, older.links || {}, newer.links || {});
+  out.moves = {}; [older, newer].forEach(st => Object.entries(st.moves || {}).forEach(([k, v]) => { if (!out.moves[k] || (v.ts || 0) > (out.moves[k].ts || 0)) out.moves[k] = v; }));
+  const lg = {}; [older, newer].forEach(st => (st.classLog || []).forEach(e => { lg[e.ts + '|' + e.slot] = e; })); out.classLog = Object.values(lg).sort((x, y) => x.ts - y.ts).slice(-300);
   out.rev = Math.max(a.rev || 0, b.rev || 0);
   return out;
 }
@@ -825,12 +827,42 @@ function calendarRow(name, st) {
   return [h('span', null, name), ...cells, h('span', { class: 'n' }, st ? streakOf(st) : '—')];
 }
 
-/* ---------- розклад занять: вт 17:30 граматика, ср 17:30 лексика ---------- */
+/* ---------- розклад занять: вт 17:00 граматика, ср 17:00 лексика ----------
+   Перенесення: S.moves['YYYY-MM-DD|g'] = { to:'YYYY-MM-DDTHH:MM' | off:true | reg:true, ts, by }.
+   Ключ — день і трек звичайного заняття. Діма й Наташа бачать перенесення одне одного (діє найновіше).
+   S.classLog — історія змін. */
 const CLASSES = [[2, 'g'], [3, 'v']];
+const CLASS_TIME = [17, 0];
+const TR_NAME = { g: 'Граматика', v: 'Лексика' };
+const hm = d => pad(d.getHours()) + ':' + pad(d.getMinutes());
+const fmtWhen = d => UA_DAYS[d.getDay()] + ', ' + d.getDate() + ' ' + UA_MONTHS[d.getMonth()] + ' о ' + hm(d);
+const fmtShort = d => UA_DAYS[d.getDay()] + ' ' + fmtDate(dstr(d)) + ' ' + hm(d);
+function parseLocal(s) { const [a, b] = s.split('T'); const [y, m, d] = a.split('-').map(Number); const [H, M] = (b || '0:0').split(':').map(Number); return new Date(y, m - 1, d, H, M); }
+function allMoves() {
+  const out = {}; const o = otherState().st;
+  [o && o.moves, S.moves].forEach(m => Object.entries(m || {}).forEach(([k, v]) => { if (!out[k] || (v.ts || 0) > (out[k].ts || 0)) out[k] = v; }));
+  return out;
+}
+function allClassLog() {
+  const o = otherState().st; const lg = {};
+  [o && o.classLog, S.classLog].forEach(a => (a || []).forEach(e => { lg[e.ts + '|' + e.slot] = e; }));
+  return Object.values(lg).sort((x, y) => y.ts - x.ts);
+}
+/** усі звичайні заняття між двома датами (YYYY-MM-DD) з урахуванням перенесень */
+function classSlots(from, to) {
+  const mv = allMoves(), out = [];
+  for (let d = from; d <= to; d = addDays(d, 1)) {
+    const base = parseLocal(d + 'T' + pad(CLASS_TIME[0]) + ':' + pad(CLASS_TIME[1]));
+    const c = CLASSES.find(x => x[0] === base.getDay()); if (!c) continue;
+    const key = d + '|' + c[1], m = mv[key];
+    const moved = m && m.to && !m.reg, off = !!(m && m.off && !m.reg);
+    out.push({ key, tr: c[1], base, at: moved ? parseLocal(m.to) : base, moved, off, by: m && !m.reg ? m.by : null });
+  }
+  return out;
+}
 function nextClass() {
   const now = new Date();
-  for (let k = 0; k < 8; k++) { const d = new Date(now); d.setDate(now.getDate() + k); d.setHours(17, 30, 0, 0); const c = CLASSES.find(x => x[0] === d.getDay()); if (c && d > now) return { at: d, tr: c[1] }; }
-  return null;
+  return classSlots(addDays(today(), -14), addDays(today(), 21)).filter(x => !x.off && x.at > now).sort((a, b) => a.at - b.at)[0] || null;
 }
 function classLesson(tr) {
   if (tr === 'g' && C.lessons[lid('g', S.course)]) return C.lessons[lid('g', S.course)];
@@ -842,13 +874,69 @@ function warmupItems(L) {
   const flash = sample((L.cards || []).map(c => ({ type: 'flash', L, card: c, key: L.id + ':' + c.id, dir: 'uk' })), 3);
   return sample(lessonPool(L).filter(x => x.type !== 'match'), 4).concat(mist, flash, sample(speak, 2));
 }
+function whenLabel(at) {
+  const t = today(), d = dstr(at);
+  return d === t ? 'сьогодні о ' + hm(at) : d === addDays(t, 1) ? 'завтра о ' + hm(at) : fmtWhen(at);
+}
+const moveBtn = () => h('button', { class: 'link small', onclick: () => moveDialog() }, 'перенести');
 function classCard() {
   const c = nextClass(); if (!c) return null;
-  const hrs = (c.at - new Date()) / 36e5; if (hrs > 30) return null;
-  const L = classLesson(c.tr); const when = (c.at.toDateString() === new Date().toDateString() ? 'сьогодні' : 'завтра') + ' о 17:30';
-  return h('div', { class: 'card' }, h('div', { class: 'col', style: 'gap:2px' }, h('span', { class: 'kicker' + (c.tr === 'v' ? ' v' : '') }, 'Заняття ' + when), h('h3', null, (c.tr === 'g' ? 'Граматика' : 'Лексика') + (L ? ' · урок ' + L.num + ': ' + L.title : ''))),
+  const movedNote = c.moved ? h('span', { class: 'tiny muted' }, 'перенесено з ' + fmtShort(c.base) + (c.by ? ' · ' + NAMES[c.by] : '')) : null;
+  const hrs = (c.at - new Date()) / 36e5;
+  if (hrs > 30) return h('div', { class: 'soft spread' }, h('div', { class: 'col', style: 'gap:0' }, h('span', null, h('span', { class: 'b' }, 'Наступне заняття: '), TR_NAME[c.tr].toLowerCase() + ', ' + fmtWhen(c.at)), movedNote), moveBtn());
+  const L = classLesson(c.tr);
+  return h('div', { class: 'card' }, h('div', { class: 'spread', style: 'align-items:flex-start' }, h('div', { class: 'col', style: 'gap:2px' }, h('span', { class: 'kicker' + (c.tr === 'v' ? ' v' : '') }, 'Заняття ' + whenLabel(c.at)), h('h3', null, TR_NAME[c.tr] + (L ? ' · урок ' + L.num + ': ' + L.title : '')), movedNote), moveBtn()),
     h('p', { class: 'small muted' }, 'Розминка перед заняттям: вправи цього уроку, твої помилки, кілька слів і фраза вголос. ~5 хв.'),
     L ? h('button', { class: 'btn ghost wide', onclick: () => startSession({ title: 'Розминку пройдено', parts: [{ items: shuffle(warmupItems(L)) }] }) }, 'Розминка') : null);
+}
+function setMove(slot, val, what) {
+  S.moves = S.moves || {}; S.classLog = S.classLog || [];
+  const prev = slot.off ? 'не буде' : fmtShort(slot.at);
+  S.moves[slot.key] = Object.assign({ ts: Date.now(), by: PROFILE }, val);
+  S.classLog.push({ ts: Date.now(), by: PROFILE, slot: slot.key, tr: slot.tr, from: prev, to: what });
+  S.classLog = S.classLog.slice(-300);
+  save(); render(); toast(TR_NAME[slot.tr] + ': ' + what);
+}
+function moveDialog(pickKey) {
+  const now = new Date();
+  const slots = classSlots(addDays(today(), -14), addDays(today(), 28)).filter(x => x.at > now || x.base > now || (x.off && x.base > addDaysDate(now, -1)));
+  if (!slots.length) { toast('Немає найближчих занять'); return; }
+  let cur = slots.find(x => x.key === pickKey) || slots.find(x => !x.off) || slots[0];
+  const sel = h('select', { class: 'txt', 'aria-label': 'Яке заняття' }, slots.map(x => h('option', { value: x.key, selected: x === cur }, TR_NAME[x.tr] + ' · ' + fmtShort(x.base) + (x.off ? ' → не буде' : x.moved ? ' → ' + fmtShort(x.at) : ''))));
+  const dIn = h('input', { type: 'date', class: 'txt', 'aria-label': 'Нова дата' });
+  const tIn = h('input', { type: 'time', class: 'txt', step: 300, 'aria-label': 'Новий час' });
+  const fill = () => { cur = slots.find(x => x.key === sel.value); dIn.value = dstr(cur.at); tIn.value = hm(cur.at); };
+  sel.onchange = fill; fill();
+  const body = h('div', { class: 'col', style: 'gap:10px' },
+    h('label', { class: 'col small b', style: 'gap:4px' }, 'Яке заняття', sel),
+    h('div', { class: 'row', style: 'gap:8px' }, h('label', { class: 'col small b grow', style: 'gap:4px' }, 'Нова дата', dIn), h('label', { class: 'col small b', style: 'gap:4px;width:120px' }, 'Час', tIn)),
+    h('p', { class: 'tiny muted', style: 'margin:0' }, 'Перенесення побачите обоє. Звичайний час — вт і ср о ' + pad(CLASS_TIME[0]) + ':' + pad(CLASS_TIME[1]) + '.'),
+    h('button', { class: 'link small', style: 'align-self:flex-start', onclick: () => { closeDialog(); historyDialog(); } }, 'Історія занять'));
+  const btns = [['Скасувати', () => { }, 'ghost'], ['Заняття не буде', () => setMove(cur, { off: true }, 'не буде'), 'ghost']];
+  btns.push(['Звичайний час', () => { if (!cur.moved && !cur.off) { toast('Це заняття й так у звичайний час'); return false; } setMove(cur, { reg: true }, fmtShort(cur.base) + ' (звичайний час)'); }, 'ghost']);
+  btns.push(['Зберегти', () => {
+    if (!dIn.value || !tIn.value) { toast('Вкажи дату й час'); return false; }
+    const to = dIn.value + 'T' + tIn.value, at = parseLocal(to);
+    if (at < new Date(Date.now() - 36e5)) { toast('Цей час уже минув'); return false; }
+    if (to === dstr(cur.base) + 'T' + hm(cur.base)) return setMove(cur, { reg: true }, fmtShort(cur.base) + ' (звичайний час)');
+    setMove(cur, { to }, fmtShort(at));
+  }]);
+  dialog('Перенести заняття', body, btns);
+}
+function addDaysDate(d, n) { const x = new Date(d); x.setDate(x.getDate() + n); return x; }
+function historyDialog() {
+  const now = new Date(); const o = otherState().st;
+  const seen = Object.keys(S.sessions || {}).concat(Object.keys((o && o.sessions) || {})).sort();
+  const from = !seen.length ? today() : seen[0] > addDays(today(), -182) ? seen[0] : addDays(today(), -182);
+  const past = classSlots(from, today()).filter(x => (x.off ? x.base : x.at) <= now).reverse();
+  const log = allClassLog();
+  const body = h('div', { class: 'col', style: 'gap:14px' },
+    h('div', { class: 'col', style: 'gap:6px' }, h('h3', { style: 'margin:0' }, 'Проведені заняття'),
+      past.length ? h('ul', { class: 'small', style: 'margin:0;padding-left:20px;line-height:1.6' }, past.map(x => h('li', null, h('span', { class: 'b' }, TR_NAME[x.tr]), ' · ', x.off ? fmtShort(x.base) + ' — не було' : fmtShort(x.at), x.moved ? h('span', { class: 'muted' }, ' (замість ' + fmtShort(x.base) + ')') : null))) : h('p', { class: 'small muted', style: 'margin:0' }, 'Поки немає.')),
+    h('div', { class: 'col', style: 'gap:6px' }, h('h3', { style: 'margin:0' }, 'Зміни розкладу'),
+      log.length ? h('ul', { class: 'small', style: 'margin:0;padding-left:20px;line-height:1.6' }, log.map(e => h('li', null, h('span', { class: 'muted' }, fmtDate(dstr(new Date(e.ts))) + ' · ' + (NAMES[e.by] || '') + ': '), TR_NAME[e.tr] + ': ' + e.from + ' → ' + e.to))) : h('p', { class: 'small muted', style: 'margin:0' }, 'Перенесень ще не було.')),
+    h('p', { class: 'tiny muted', style: 'margin:0' }, 'Список рахується від першого дня на платформі: звичайні заняття за розкладом плюс усі перенесення й скасування. ' + 'До 23.11.2026 у платформі стояв час 17:30 — це було помилкою, насправді заняття о 17:00.'));
+  dialog('Історія занять', body, [['Перенести заняття', () => { setTimeout(() => moveDialog(), 0); }, 'ghost'], ['Закрити', () => { }]]);
 }
 VIEWS.today = main => {
   const now = new Date();
@@ -1108,7 +1196,7 @@ VIEWS.more = main => {
       CLOUD ? h('div', null, 'Остання синхронізація: ', h('b', null, (SYNC.at || '—') + ' · ' + ({ ok: 'успішно', err: 'ПОМИЛКА ' + SYNC.err, saving: 'триває', local: 'ще не було' }[SYNC.state] || SYNC.state))) : null,
       h('div', null, 'Пройдено днів: ', h('b', null, Object.keys(S.done).length), ' · карток: ', h('b', null, Object.keys(S.cards).length), ' · серія: ', h('b', null, streakOf(S))),
       h('div', null, 'Дні: ', h('b', null, doneSummary() || '—')))),
-    h('p', { class: 'tiny muted' }, (CLOUD ? 'Версія: 1.7 (23.11)' : 'Версія: пілот 0.5') + ' · уроків завантажено: ' + Object.keys(C.lessons).length + (C.errors.length ? ' · помилка завантаження: ' + C.errors.join(', ') : ''))));
+    h('p', { class: 'tiny muted' }, (CLOUD ? 'Версія: 1.8 (23.11)' : 'Версія: пілот 0.5') + ' · уроків завантажено: ' + Object.keys(C.lessons).length + (C.errors.length ? ' · помилка завантаження: ' + C.errors.join(', ') : ''))));
 };
 function showExport(txt) { const ta = h('textarea', { class: 'txt', readonly: true, 'aria-label': 'Копія прогресу' }); ta.value = txt; dialog('Копія прогресу', h('div', { class: 'col' }, h('p', { class: 'small' }, 'Виділи весь текст і скопіюй.'), ta), [['Готово', () => { }]]); }
 function importDialog() {
