@@ -112,10 +112,10 @@ function mergeState(a, b) {
   out.rev = Math.max(a.rev || 0, b.rev || 0);
   return out;
 }
-const progressSig = st => Object.keys(st.done || {}).length + '|' + Object.keys(st.sessions || {}).length + '|' + Object.keys(st.cards || {}).length + '|' + Object.keys(st.mistakes || {}).length;
+const progressSig = st => Object.keys(st.done || {}).length + '|' + Object.keys(st.sessions || {}).length + '|' + Object.keys(st.cards || {}).length + '|' + Object.keys(st.mistakes || {}).length + '|' + Object.values(st.moves || {}).reduce((x, m) => Math.max(x, m.ts || 0), 0);
 function save() {
   S.rev = Date.now(); Store.set('p.' + PROFILE, S);
-  if (CLOUD && UID && window.Cloud) { clearTimeout(cloudT); cloudT = setTimeout(pushCloud, 1500); }
+  if (CLOUD && UID && window.Cloud) { clearTimeout(cloudT); cloudT = setTimeout(pushCloud, 1500); ntSync(); }
 }
 function pushCloud() {
   clearTimeout(cloudT); cloudT = null;
@@ -1184,6 +1184,7 @@ VIEWS.more = main => {
       CLOUD ? h('div', { class: 'spread' }, h('span', null, 'Синхронізація: ', h('b', null, { ok: 'збережено', saving: 'зберігаю…', err: 'помилка (' + SYNC.err + ')', local: 'очікує' }[SYNC.state] || SYNC.state)), h('button', { class: 'btn ghost small', onclick: () => { pushCloud(); toast('Зберігаю…'); } }, 'Зберегти зараз')) : null,
       h('div', { class: 'spread' }, h('span', null, 'Курс зараз на уроці: ', h('b', null, S.course)), h('button', { class: 'btn ghost small', onclick: chooseCourse }, 'Змінити')),
       h('div', { class: 'spread' }, h('span', null, 'Озвучка: ', h('b', null, SK_VOICE ? (S.settings.tts === false ? 'вимкнено' : 'увімкнено (' + SK_VOICE.name + ')') : 'немає словацького голосу в системі')), SK_VOICE ? h('button', { class: 'btn ghost small', onclick: () => { S.settings.tts = S.settings.tts === false; save(); render(); } }, S.settings.tts === false ? 'Увімкнути' : 'Вимкнути') : null)),
+    notifyCard(),
     h('div', { class: 'card' }, h('h3', null, 'Резервна копія прогресу'), h('p', { class: 'small muted' }, CLOUD ? 'Прогрес зберігається в базі. Сюди можна вставити копію з пілоту, щоб перенести пройдене.' : 'Поки немає Firebase, прогрес лежить лише в цьому браузері. Копію можна зберегти як текст.'),
       h('div', { class: 'row wrap' },
         h('button', { class: 'btn ghost small', onclick: () => { const txt = JSON.stringify({ profile: PROFILE, state: S }); try { navigator.clipboard.writeText(txt).then(() => toast('Копію скопійовано'), () => showExport(txt)); } catch (e) { showExport(txt); } } }, 'Скопіювати копію'),
@@ -1196,7 +1197,7 @@ VIEWS.more = main => {
       CLOUD ? h('div', null, 'Остання синхронізація: ', h('b', null, (SYNC.at || '—') + ' · ' + ({ ok: 'успішно', err: 'ПОМИЛКА ' + SYNC.err, saving: 'триває', local: 'ще не було' }[SYNC.state] || SYNC.state))) : null,
       h('div', null, 'Пройдено днів: ', h('b', null, Object.keys(S.done).length), ' · карток: ', h('b', null, Object.keys(S.cards).length), ' · серія: ', h('b', null, streakOf(S))),
       h('div', null, 'Дні: ', h('b', null, doneSummary() || '—')))),
-    h('p', { class: 'tiny muted' }, (CLOUD ? 'Версія: 1.8 (23.11)' : 'Версія: пілот 0.5') + ' · уроків завантажено: ' + Object.keys(C.lessons).length + (C.errors.length ? ' · помилка завантаження: ' + C.errors.join(', ') : ''))));
+    h('p', { class: 'tiny muted' }, (CLOUD ? 'Версія: 1.9 (24.11)' : 'Версія: пілот 0.5') + ' · уроків завантажено: ' + Object.keys(C.lessons).length + (C.errors.length ? ' · помилка завантаження: ' + C.errors.join(', ') : ''))));
 };
 function showExport(txt) { const ta = h('textarea', { class: 'txt', readonly: true, 'aria-label': 'Копія прогресу' }); ta.value = txt; dialog('Копія прогресу', h('div', { class: 'col' }, h('p', { class: 'small' }, 'Виділи весь текст і скопіюй.'), ta), [['Готово', () => { }]]); }
 function importDialog() {
@@ -1205,6 +1206,96 @@ function importDialog() {
     try { const o = JSON.parse(ta.value); if (!o.state || typeof o.state.done !== 'object') throw 0; S = Object.assign(newState(), o.state); save(); render(); toast('Прогрес відновлено'); }
     catch (e) { toast('Це не схоже на копію прогресу'); return false; }
   }]]);
+}
+
+
+/* ---------- сповіщення (web push) ----------
+   Налаштування й підписки пристроїв лежать у notify/{uid} (читає лише власник і воркер Cloudflare).
+   Воркер щохвилини читає ці документи й шле нагадування. Тут лише налаштування й підписка. */
+const VAPID_PUBLIC = 'BIbo5zh4DcK8Mnsqxdyt2cBd3T84U-p5OL5uzRgLofKcVeir7KkXMTCB0N-ZI9fT4IxMa3mhLR9w71iuT5C3z3g';
+const NT_DEF = { on: true, daily: '20:00', dailyOn: true, cls: 60, devices: {}, test: 0 };
+let NT = clone(NT_DEF), NT_LAST = '', ntT = null;
+const DEV = (() => { let d = Store.get('dev', null); if (!d) { d = Math.random().toString(36).slice(2, 10); Store.set('dev', d); } return d; })();
+const pushSupported = () => 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+function devLabel() {
+  const u = navigator.userAgent;
+  const os = /Android/.test(u) ? 'Android' : /iPhone|iPad/.test(u) ? 'iPhone' : /Windows/.test(u) ? 'Windows' : /Mac OS/.test(u) ? 'Mac' : /Linux/.test(u) ? 'Linux' : 'пристрій';
+  const br = /Edg\//.test(u) ? 'Edge' : /OPR\//.test(u) ? 'Opera' : /SamsungBrowser/.test(u) ? 'Samsung' : /Firefox\//.test(u) ? 'Firefox' : /Chrome\//.test(u) ? 'Chrome' : /Safari\//.test(u) ? 'Safari' : '';
+  return os + (br ? ' · ' + br : '');
+}
+function ntDoc() {
+  const next = ['g', 'v'].map(tr => { const nd = nextDay(tr); return nd ? TR_NAME[tr].toLowerCase() + ', урок ' + nd.L.num + ', день ' + nd.d.n : null; }).filter(Boolean).join(' · ');
+  const lessons = {}; ['g', 'v'].forEach(tr => { const L = classLesson(tr); if (L) lessons[tr] = TR_NAME[tr] + ' · урок ' + L.num + ': ' + L.title; });
+  const sess = Object.keys(S.sessions || {}).sort(), cut = addDays(today(), -60), moves = {};
+  Object.entries(allMoves()).forEach(([k, v]) => { if (k >= cut) moves[k] = v; });
+  let tz = 'Europe/Kyiv'; try { tz = Intl.DateTimeFormat().resolvedOptions().timeZone || tz; } catch (e) { }
+  return { v: 1, name: PROFILE, tz, on: !!NT.on, daily: NT.dailyOn ? NT.daily : '', cls: NT.cls || 0, devices: NT.devices, done: sess[sess.length - 1] || '', next, lessons, sched: { days: CLASSES, h: CLASS_TIME[0], m: CLASS_TIME[1] }, moves, test: NT.test || 0 };
+}
+function ntSync(now) {
+  if (!(CLOUD && UID && window.Cloud && window.Cloud.saveNotify && NT.loaded)) return;
+  clearTimeout(ntT); ntT = setTimeout(() => {
+    let json; try { json = JSON.stringify(ntDoc()); } catch (e) { return; }
+    if (json === NT_LAST) return;
+    window.Cloud.saveNotify(UID, json).then(() => { NT_LAST = json; }, e => { toast('Налаштування сповіщень не збереглися: ' + (e.code || e.message)); });
+  }, now ? 0 : 2500);
+}
+function ntSet(patch, now) { Object.assign(NT, patch); Store.set('nt.' + PROFILE, NT); ntSync(now); }
+async function ntLoad() {
+  NT = Object.assign(clone(NT_DEF), Store.get('nt.' + PROFILE, {}));
+  try { const d = await window.Cloud.loadNotify(UID); if (d && d.json) { const r = JSON.parse(d.json); NT_LAST = d.json; Object.assign(NT, { on: r.on !== false, dailyOn: !!r.daily, daily: r.daily || NT.daily, cls: r.cls || 0, devices: r.devices || {}, test: r.test || 0 }); } } catch (e) { /* офлайн — беремо локальну копію */ }
+  NT.loaded = true; Store.set('nt.' + PROFILE, NT);
+  if (NT.devices[DEV]) { try { await ntRefreshSub(); } catch (e) { } }
+  ntSync();
+}
+const vapidBytes = () => { const s = VAPID_PUBLIC.replace(/-/g, '+').replace(/_/g, '/'); const b = atob(s + '='.repeat((4 - s.length % 4) % 4)); return Uint8Array.from(b, c => c.charCodeAt(0)); };
+async function ntSubscribe() {
+  const reg = await navigator.serviceWorker.ready;
+  let sub = await reg.pushManager.getSubscription();
+  if (sub) { const k = sub.options && sub.options.applicationServerKey; if (k && btoa(String.fromCharCode(...new Uint8Array(k))) !== btoa(String.fromCharCode(...vapidBytes()))) { await sub.unsubscribe(); sub = null; } }
+  if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: vapidBytes() });
+  return sub;
+}
+/** підписка цього пристрою жива й та сама, що в базі */
+async function ntRefreshSub() {
+  if (!pushSupported() || Notification.permission !== 'granted') { if (NT.devices[DEV]) { const d = Object.assign({}, NT.devices); delete d[DEV]; ntSet({ devices: d }); } return; }
+  const sub = await ntSubscribe(), j = sub.toJSON(), cur = NT.devices[DEV];
+  if (!cur || cur.sub.endpoint !== j.endpoint) ntSet({ devices: Object.assign({}, NT.devices, { [DEV]: { sub: { endpoint: j.endpoint, keys: j.keys }, ua: devLabel(), ts: Date.now() } }) });
+}
+async function ntEnableHere() {
+  if (!pushSupported()) { toast('Цей браузер не підтримує сповіщення'); return; }
+  try {
+    const perm = await Notification.requestPermission();
+    if (perm !== 'granted') { toast(perm === 'denied' ? 'Сповіщення заблоковані в браузері' : 'Дозвіл не надано'); render(); return; }
+    const sub = await ntSubscribe(), j = sub.toJSON();
+    ntSet({ on: true, devices: Object.assign({}, NT.devices, { [DEV]: { sub: { endpoint: j.endpoint, keys: j.keys }, ua: devLabel(), ts: Date.now() } }) }, true);
+    (await navigator.serviceWorker.ready).showNotification('Сповіщення увімкнено', { body: 'На цьому пристрої тепер будуть нагадування.', icon: 'icon-192.png', tag: 'enabled', lang: 'uk' });
+    toast('Сповіщення увімкнено');
+  } catch (e) { toast('Не вдалося увімкнути: ' + (e.message || e)); }
+  render();
+}
+async function ntDisableHere() {
+  try { const reg = await navigator.serviceWorker.ready; const sub = await reg.pushManager.getSubscription(); if (sub) await sub.unsubscribe(); } catch (e) { }
+  const d = Object.assign({}, NT.devices); delete d[DEV]; ntSet({ devices: d }, true); toast('На цьому пристрої сповіщення вимкнено'); render();
+}
+function notifyCard() {
+  if (!CLOUD) return null;
+  const sup = pushSupported(), here = !!NT.devices[DEV], nDev = Object.keys(NT.devices).length;
+  const denied = sup && Notification.permission === 'denied';
+  const chk = (on, fn, label) => h('label', { class: 'row', style: 'gap:10px;align-items:center;cursor:pointer' }, h('input', { type: 'checkbox', checked: !!on, style: 'width:22px;height:22px;accent-color:var(--green)', onchange: e => fn(e.target.checked) }), h('span', null, label));
+  const tIn = h('input', { type: 'time', class: 'txt', step: 300, value: NT.daily, 'aria-label': 'Час щоденного нагадування', style: 'width:130px;padding:8px 10px', disabled: !NT.dailyOn || !NT.on, onchange: e => { if (e.target.value) ntSet({ daily: e.target.value }); toast('Щоденне нагадування о ' + e.target.value); } });
+  const cSel = h('select', { class: 'txt', 'aria-label': 'За скільки хвилин', style: 'width:130px;padding:8px 10px', disabled: !NT.cls || !NT.on, onchange: e => { ntSet({ cls: +e.target.value }); toast('Нагадування за ' + e.target.value + ' хв до заняття'); } }, [15, 30, 60, 90, 120].map(m => h('option', { value: m, selected: m === (NT.cls || 60) }, m < 60 ? m + ' хв' : m === 60 ? '1 год' : m === 90 ? '1,5 год' : '2 год')));
+  return h('div', { class: 'card' }, h('h3', null, 'Сповіщення'),
+    !sup ? h('p', { class: 'small muted' }, 'Цей браузер не підтримує сповіщення. На iPhone вони запрацюють пізніше, через «На екран Додому».') :
+      h('div', { class: 'spread' }, h('span', null, 'Цей пристрій (' + devLabel() + '): ', h('b', null, here ? 'увімкнено' : 'вимкнено')), h('button', { class: 'btn small ' + (here ? 'ghost' : ''), onclick: here ? ntDisableHere : ntEnableHere }, here ? 'Вимкнути тут' : 'Увімкнути тут')),
+    denied ? h('div', { class: 'note small' }, 'Браузер заблокував сповіщення для цього сайту. Дозволь їх у налаштуваннях сайту (значок біля адреси → Сповіщення → Дозволити), потім натисни «Увімкнути тут».') : null,
+    h('div', { class: 'col', style: 'gap:12px;opacity:' + (NT.on ? 1 : .55) },
+      h('div', { class: 'spread wrap', style: 'gap:8px' }, chk(NT.dailyOn, v => { ntSet({ dailyOn: v }); render(); }, 'Щоденне нагадування о'), tIn),
+      h('p', { class: 'tiny muted', style: 'margin:-6px 0 0' }, 'Не прийде, якщо день на сьогодні вже пройдено.'),
+      h('div', { class: 'spread wrap', style: 'gap:8px' }, chk(NT.cls > 0, v => { ntSet({ cls: v ? 60 : 0 }); render(); }, 'Про заняття за'), cSel),
+      h('p', { class: 'tiny muted', style: 'margin:-6px 0 0' }, 'Враховує перенесення й скасування.')),
+    chk(!NT.on, v => { ntSet({ on: !v }, true); render(); toast(v ? 'Усі сповіщення вимкнено' : 'Сповіщення знову увімкнено'); }, 'Вимкнути всі сповіщення'),
+    h('div', { class: 'spread' }, h('span', { class: 'small muted' }, nDev ? 'Пристроїв зі сповіщеннями: ' + nDev + ' (' + Object.values(NT.devices).map(d => d.ua).join(', ') + ')' : 'Сповіщення ще не увімкнено на жодному пристрої.'),
+      h('button', { class: 'btn ghost small', disabled: !nDev || !NT.on, onclick: () => { ntSet({ test: Date.now() }, true); toast('Тестове сповіщення прийде протягом хвилини'); } }, 'Перевірити')));
 }
 
 /* ---------- перевірка формату уроку (той самий формат дає шаблон для безкоштовного чату) ---------- */
@@ -1483,7 +1574,7 @@ async function cloudBoot() {
       list.forEach(d => {
         const p2 = Cl.ALLOWED[String(d.email || '').toLowerCase()]; if (!p2) return;
         let st; try { st = Object.assign(newState(), JSON.parse(d.json)); } catch (e) { return; }
-        if (p2 !== PROFILE) { OTHER[p2] = st; return; }
+        if (p2 !== PROFILE) { OTHER[p2] = st; ntSync(); return; }
         if (d.id !== UID) return;
         const before = progressSig(S); S = mergeState(S, st); Store.set('p.' + PROFILE, S);
         if (progressSig(S) !== before) changed = true;
@@ -1493,6 +1584,7 @@ async function cloudBoot() {
       if ($('#player').hidden && ['today', ''].includes(ROUTE)) render();
     }, () => { });
     ungate(); render();
+    ntLoad().then(() => { if (ROUTE === 'more') render(); });
   });
 }
 async function boot() {
