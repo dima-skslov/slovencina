@@ -1309,10 +1309,23 @@ const PERS = ['ja', 'ty', 'on / ona', 'my', 'vy', 'oni'];
 const TR_DEF = { cases: ['G', 'D', 'A', 'L', 'I'], nums: ['sg', 'pl'], tenses: ['pres', 'past', 'fut'] };
 const trPref = () => { const p = Object.assign({}, TR_DEF, Store.get('tr.pref.' + PROFILE, {})); ['cases', 'nums', 'tenses'].forEach(k => { if (!Array.isArray(p[k]) || !p[k].length) p[k] = TR_DEF[k]; }); return p; };
 const pickOne = a => a[Math.floor(Math.random() * a.length)];
+/** до якого уроку граматики вже дійшли: урок курсу (для тих, хто ходить на заняття) або найдальший початий на платформі */
+function trainerMax() {
+  let m = 0;
+  Object.values(C.lessons).forEach(X => { if (X.track === 'g' && X.days.some(d => isDone(X, d))) m = Math.max(m, X.num); });
+  if (ON_COURSE[PROFILE]) m = Math.max(m, S.course || 0);
+  if (!m) { const nd = nextDay('g'); m = nd ? nd.L.num : 1; }
+  return m;
+}
+/** уроки для тренажера: граматика до trainerMax(), лексика — лише початі */
+const trainerLessons = () => { const m = trainerMax(); return Object.values(C.lessons).filter(X => X.track === 'g' ? X.num <= m : X.days.some(d => isDone(X, d))); };
+/** час відкривається з уроку, де його вчать: минулий — з 5-го, майбутній — з 20-го */
+const TENSE_FROM = { pres: 1, past: 5, fut: 20 };
 function trainerItems(mode, n) {
-  const out = [], pref = trPref();
-  const forms = Object.values(C.lessons).flatMap(L => (L.forms || []).map(f => ({ L, f })));
-  const verbs = Object.values(C.lessons).flatMap(L => (L.verbs || []).map(v => ({ L, v })));
+  const out = [], pref = trPref(), m = trainerMax(), Ls = trainerLessons();
+  const tenses = pref.tenses.filter(t => m >= TENSE_FROM[t]); if (!tenses.length) tenses.push('pres');
+  const forms = Ls.flatMap(L => (L.forms || []).map(f => ({ L, f })));
+  const verbs = Ls.flatMap(L => (L.verbs || []).map(v => ({ L, v })));
   for (let i = 0; i < n; i++) {
     if ((mode === 'nouns' || (mode === 'mix' && Math.random() < 0.6)) && forms.length) {
       const { L, f } = forms[Math.floor(Math.random() * forms.length)];
@@ -1321,7 +1334,7 @@ function trainerItems(mode, n) {
       out.push({ type: 'input', L, mkey: 'tr:' + f.lemma + ':' + num + cs, task: { t: 'input', showHint: true, q: 'Яка форма?', sk: f.lemma + ' → ___', hint: CASE_Q[cs] + ', ' + (num === 'sg' ? 'однина' : 'множина'), uk: f.uk, a, why: 'Взор **' + f.vzor + '**, ' + CNAME[cs] + ' ' + (num === 'sg' ? 'однини' : 'множини') + ': закінчення ' + PAT[f.vzor][num][CI[cs]] + '. Форма: **' + a.join(' / ') + '**.', cheat: f.vzor } });
     } else if (verbs.length) {
       const { L, v } = verbs[Math.floor(Math.random() * verbs.length)];
-      const tense = pickOne(pref.tenses); const p = Math.floor(Math.random() * 6);
+      const tense = pickOne(tenses); const p = Math.floor(Math.random() * 6);
       const fem = tense === 'past' && p < 3 && Math.random() < 0.5;
       const raw = (fem ? v.pastf : v[tense])[p];
       const a = tense === 'past' ? raw.split(' ')[0].split('/').map(x => x + (raw.includes(' ') ? ' ' + raw.split(' ').slice(1).join(' ') : '')) : [raw];
@@ -1332,25 +1345,30 @@ function trainerItems(mode, n) {
   return out;
 }
 VIEWS.trainer = main => {
-  const has = Object.values(C.lessons).some(L => (L.forms || []).length || (L.verbs || []).length);
+  const m = trainerMax(), Ls = trainerLessons();
+  const nForms = Ls.reduce((n, L) => n + (L.forms || []).length, 0), nVerbs = Ls.reduce((n, L) => n + (L.verbs || []).length, 0);
+  const has = nForms + nVerbs > 0;
   const pref = trPref();
   const toggle = (k, v) => { const cur = trPref()[k]; const next = cur.includes(v) ? cur.filter(x => x !== v) : cur.concat(v); if (!next.length) { toast('Залиш хоча б один варіант'); return; } Store.set('tr.pref.' + PROFILE, Object.assign(trPref(), { [k]: next })); render(); };
-  const chips = (k, opts) => h('div', { class: 'row wrap', style: 'gap:6px' }, opts.map(([v, l]) => h('button', { class: 'chip' + (pref[k].includes(v) ? ' on' : ''), 'aria-pressed': pref[k].includes(v) ? 'true' : 'false', onclick: () => toggle(k, v) }, l)));
+  const chips = (k, opts) => h('div', { class: 'row wrap', style: 'gap:6px' }, opts.map(([v, l, from]) => from && m < from
+    ? h('button', { class: 'chip', disabled: true, title: 'Відкриється з уроку ' + from }, l + ' · з уроку ' + from)
+    : h('button', { class: 'chip' + (pref[k].includes(v) ? ' on' : ''), 'aria-pressed': pref[k].includes(v) ? 'true' : 'false', onclick: () => toggle(k, v) }, l)));
   const go10 = mode => startSession({ title: 'Тренування завершено', label: 'Тренажер форм', parts: [{ items: trainerItems(mode, 10) }] });
   main.append(h('div', { class: 'stack', style: 'max-width:760px' }, h('h1', null, 'Тренажер форм'), h('p', { class: 'muted' }, 'Відмінки іменників і форми дієслів зі слів пройдених уроків. 10 завдань з миттєвою перевіркою. Помилки потрапляють у «Помилки».'),
+    h('div', { class: 'soft' }, h('span', null, 'Слова з уроків граматики 1–' + m + (Ls.some(L => L.track === 'v') ? ' і початих уроків лексики' : '') + ': ' + nForms + ' ' + plural(nForms, 'іменник', 'іменники', 'іменників') + ', ' + nVerbs + ' ' + plural(nVerbs, 'дієслово', 'дієслова', 'дієслів') + '.'), h('span', { class: 'tiny muted', style: 'display:block' }, ON_COURSE[PROFILE] ? 'Межа — урок курсу (' + (S.course || '—') + ') або найдальший урок, який ти почав на платформі.' : 'Межа — найдальший урок, який ти почав на платформі.')),
     has ? h('div', { class: 'col' },
-      h('div', { class: 'card' }, h('h3', null, 'Іменники'),
+      !nForms ? h('div', { class: 'card' }, h('h3', null, 'Іменники'), h('p', { class: 'small muted' }, 'Відмінювання іменників почнеться з уроку 8.')) : h('div', { class: 'card' }, h('h3', null, 'Іменники'),
         h('span', { class: 'small b muted' }, 'Відмінки'),
         chips('cases', [['G', 'G · родовий'], ['D', 'D · давальний'], ['A', 'A · знахідний'], ['L', 'L · місцевий'], ['I', 'I · орудний']]),
         h('span', { class: 'small b muted' }, 'Число'),
         chips('nums', [['sg', 'однина'], ['pl', 'множина']]),
         h('button', { class: 'btn wide', onclick: () => go10('nouns') }, 'Тренувати іменники')),
-      h('div', { class: 'card' }, h('h3', null, 'Дієслова'),
+      !nVerbs ? null : h('div', { class: 'card' }, h('h3', null, 'Дієслова'),
         h('span', { class: 'small b muted' }, 'Час'),
-        chips('tenses', [['pres', 'теперішній'], ['past', 'минулий'], ['fut', 'майбутній']]),
+        chips('tenses', [['pres', 'теперішній'], ['past', 'минулий', TENSE_FROM.past], ['fut', 'майбутній', TENSE_FROM.fut]]),
         h('button', { class: 'btn blue wide', onclick: () => go10('verbs') }, 'Тренувати дієслова')),
-      h('button', { class: 'btn ghost wide', onclick: () => go10('mix') }, 'Усе впереміш')) : h('p', null, 'Поки немає форм для тренування.'),
-    h('p', { class: 'tiny muted' }, 'Вибір зберігається. Набір слів зростає з кожним новим уроком.')));
+      nForms && nVerbs ? h('button', { class: 'btn ghost wide', onclick: () => go10('mix') }, 'Усе впереміш') : null) : h('p', null, 'Поки немає форм для тренування: вони з\'являться, щойно почнеш уроки з дієсловами (з 2-го).'),
+    h('p', { class: 'tiny muted' }, 'Вибір зберігається. Нові слова й відмінки з\'являються, щойно доходиш до відповідного уроку.')));
 };
 
 
