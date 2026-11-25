@@ -1419,7 +1419,7 @@ VIEWS.more = main => {
       CLOUD ? h('div', null, 'Остання синхронізація: ', h('b', null, (SYNC.at || '—') + ' · ' + ({ ok: 'успішно', err: 'ПОМИЛКА ' + SYNC.err, saving: 'триває', local: 'ще не було' }[SYNC.state] || SYNC.state))) : null,
       h('div', null, 'Пройдено днів: ', h('b', null, Object.keys(S.done).length), ' · карток: ', h('b', null, Object.keys(S.cards).length), ' · серія: ', h('b', null, streakOf(S))),
       h('div', null, 'Дні: ', h('b', null, doneSummary() || '—')))),
-    h('p', { class: 'tiny muted' }, (CLOUD ? 'Версія: 2.7 (25.11)' : 'Версія: пілот 0.5') + ' · уроків завантажено: ' + Object.keys(C.lessons).length + (C.errors.length ? ' · помилка завантаження: ' + C.errors.join(', ') : ''))));
+    h('p', { class: 'tiny muted' }, (CLOUD ? 'Версія: 2.8 (25.11)' : 'Версія: пілот 0.5') + ' · уроків завантажено: ' + Object.keys(C.lessons).length + (C.errors.length ? ' · помилка завантаження: ' + C.errors.join(', ') : ''))));
 };
 function showExport(txt) { const ta = h('textarea', { class: 'txt', readonly: true, 'aria-label': 'Копія прогресу' }); ta.value = txt; dialog('Копія прогресу', h('div', { class: 'col' }, h('p', { class: 'small' }, 'Виділи весь текст і скопіюй.'), ta), [['Готово', () => { }]]); }
 function importDialog() {
@@ -1513,7 +1513,7 @@ async function ntEnableHere() {
     if (perm !== 'granted') { toast(perm === 'denied' ? 'Сповіщення заблоковані в браузері' : 'Дозвіл не надано'); render(); return; }
     const sub = await ntSubscribe(), j = sub.toJSON();
     ntSet({ on: true, devices: Object.assign({}, NT.devices, { [DEV]: { sub: { endpoint: j.endpoint, keys: j.keys }, ua: devLabel(), ts: Date.now() } }) }, true);
-    (await navigator.serviceWorker.ready).showNotification('Сповіщення увімкнено', { body: 'На цьому пристрої тепер будуть нагадування.', icon: 'icon-192.png', tag: 'enabled', lang: 'uk' });
+    (await navigator.serviceWorker.ready).showNotification('Сповіщення увімкнено', { body: 'На цьому пристрої тепер будуть нагадування.', icon: 'icon-192.png', tag: 'enabled', lang: 'uk', silent: false, vibrate: [200, 100, 200] });
     toast('Сповіщення увімкнено');
   } catch (e) { toast('Не вдалося увімкнути: ' + (e.message || e)); }
   render();
