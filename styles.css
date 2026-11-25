@@ -107,7 +107,7 @@ button.chip.on{background:var(--green-l);border-color:var(--ok-b);color:var(--gr
 .node.v.cur .lbl{color:var(--blue-t)}
 @media (max-width:420px){.dot{width:42px;height:42px;font-size:16px}}
 
-.cal{display:grid;grid-template-columns:70px repeat(14,minmax(0,1fr)) 34px;gap:4px;align-items:center;font-size:14px;font-weight:800}
+.cal{display:grid;grid-template-columns:auto repeat(14,minmax(0,1fr)) 34px;gap:4px;align-items:center;font-size:14px;font-weight:800}
 .cal i{display:block;height:18px;border-radius:5px;background:var(--chip)}
 .cal i.on{background:var(--green)}
 .cal i.today{outline:2px dashed var(--green);outline-offset:-2px}
@@ -262,7 +262,7 @@ body{overflow-wrap:break-word}
   .dot svg{width:20px;height:20px}
   .node .lbl{font-size:11px}
   .streak{padding:8px 10px}
-  .cal{grid-template-columns:58px repeat(14,minmax(0,1fr)) 22px;gap:3px;font-size:13px}
+  .cal{grid-template-columns:auto repeat(14,minmax(0,1fr)) 22px;gap:3px;font-size:13px}
   .cal i{height:16px}
   #pl-body{padding:8px 14px 20px}
   .pl-inner{gap:16px}
@@ -283,7 +283,7 @@ body{overflow-wrap:break-word}
   .match .opt{font-size:15px;min-height:50px}
   #pl-cheatbtn{padding:0 10px;font-size:14px}
 }
-@media (max-width:360px){ .dot{width:36px;height:36px} .cal{grid-template-columns:50px repeat(14,minmax(0,1fr)) 20px} }
+@media (max-width:360px){ .dot{width:36px;height:36px} .cal{grid-template-columns:auto repeat(14,minmax(0,1fr)) 20px} }
 /* складання речення з плиток */
 .tiles{display:flex;flex-wrap:wrap;gap:8px}
 .tiles.line-box{min-height:64px;border-bottom:2px solid var(--line2);padding:6px 0 12px;align-items:flex-start}
@@ -331,3 +331,5 @@ textarea.answer{height:auto;resize:vertical;min-height:62px;line-height:1.4;padd
 :root[data-theme="dark"] .themebtn{color:#F2C94C}
 .wordhint{align-self:flex-start;background:var(--blue-l);color:var(--blue-ink);border-radius:12px;padding:8px 12px;font-size:17px;font-weight:700}
 .wordhint b{font-weight:900}
+
+.cal .nm{white-space:nowrap;padding-right:6px}

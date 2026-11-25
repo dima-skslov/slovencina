@@ -79,7 +79,8 @@ function today() { return dstr(new Date()); }
 function addDays(s, n) { const [y, m, d] = s.split('-').map(Number); const dt = new Date(y, m - 1, d); dt.setDate(dt.getDate() + n); return dstr(dt); }
 function shuffle(a) { a = a.slice(); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
 function sample(a, n) { return shuffle(a).slice(0, Math.max(0, n)); }
-function norm(s) { return String(s || '').normalize('NFC').toLowerCase().replace(/[’']/g, "'").replace(/[.!?,;:]+$/, '').replace(/\s+/g, ' ').trim(); }
+/** зайві пробели (на початку, в кінці, подвійні, перед крапкою) і кінцеві розділові знаки не рахуються */
+function norm(s) { return String(s || '').normalize('NFC').toLowerCase().replace(/[’']/g, "'").replace(/[\s\u00a0]+/g, ' ').trim().replace(/\s*[.!?,;:…]+$/, '').replace(/\s+([.!?,;:])/g, '$1').trim(); }
 function strip(s) { return norm(s).normalize('NFD').replace(/[̀-ͯ]/g, ''); }
 const clone = o => JSON.parse(JSON.stringify(o));
 const fmtDate = s => { const [y, m, d] = s.split('-'); return d + '.' + m; };
@@ -134,7 +135,7 @@ function sfx(kind) {
     });
   } catch (e) { /* без звуку — не страшно */ }
 }
-function newState() { return { v: 1, rev: 0, reset: {}, course: 9, done: {}, sessions: {}, cards: {}, mistakes: {}, texts: [], links: {}, moves: {}, classLog: [], settings: { tts: true } }; }
+function newState() { return { v: 1, rev: 0, reset: {}, course: 9, done: {}, sessions: {}, daily: {}, cards: {}, mistakes: {}, texts: [], links: {}, moves: {}, classLog: [], settings: { tts: true } }; }
 let PROFILE = null, S = null;
 function loadProfile(p) { PROFILE = p; S = Object.assign(newState(), Store.get('p.' + p, {})); Store.set('profile', p); oneTimeFixes(); }
 /** разові правки даних. streak1: Наташі +1 день до вогника (прохання Діми 24.11.2026), лише один раз */
@@ -157,6 +158,7 @@ function mergeState(a, b) {
   out.done = {};
   [older, newer].forEach(st => { const r = st.reset || {}; Object.entries(st.done || {}).forEach(([k, v]) => { const l = k.split(':')[0]; if ((r[l] || 0) >= (out.reset[l] || 0) && (!out.done[k] || v < out.done[k])) out.done[k] = v; }); });
   out.sessions = Object.assign({}, older.sessions || {}, newer.sessions || {});
+  out.daily = Object.assign({}, older.daily || {}, newer.daily || {});
   out.cards = Object.assign({}, older.cards || {});
   Object.entries(newer.cards || {}).forEach(([k, c]) => { const o = out.cards[k]; if (!o || String(c.due || '') >= String(o.due || '')) out.cards[k] = c; });
   const tx = {}; (older.texts || []).forEach(t => { tx[t.id] = t; }); (newer.texts || []).forEach(t => { tx[t.id] = t; }); out.texts = Object.values(tx);
@@ -562,6 +564,7 @@ function endSession() {
   const mins = Math.max(1, Math.round((Date.now() - PL.started) / 60000));
   if (PL.onEnd) PL.onEnd();
   if (PL.stats.ok + PL.stats.bad + PL.stats.almost > 0 || PL.total > 0) S.sessions[today()] = true;
+  if (PL.resumeKey === 'today') { S.daily = S.daily || {}; S.daily[today()] = true; }
   save();
   closeCheat(); $('#pl-cheatbtn').hidden = true;
   $('#pl-fill').style.width = '100%';
@@ -1021,7 +1024,7 @@ function estMin(items) { let s = 0; items.forEach(it => { s += it.type === 'read
 function startToday() {
   const sv = savedSession('today'); if (sv && resumeSession(sv)) return;
   const parts = todayParts();
-  startSession({ title: 'Сесію на сьогодні пройдено', label: 'Сесія на сьогодні', resumeKey: 'today', parts, onEnd: () => { S.sessions[today()] = true; save(); } });
+  startSession({ title: 'Сесію на сьогодні пройдено', label: 'Сесія на сьогодні', resumeKey: 'today', parts });
 }
 function startDay(L, d) {
   const sv = savedSession(dayKey(L, d)); if (sv && resumeSession(sv)) return;
@@ -1039,7 +1042,7 @@ function dayPath(L) {
 }
 function calendarRow(name, st) {
   const cells = []; for (let i = 13; i >= 0; i--) { const d = addDays(today(), -i); cells.push(h('i', { class: (st && st.sessions[d] ? 'on' : '') + (i === 0 ? ' today' : ''), title: fmtDate(d) })); }
-  return [h('span', null, name), ...cells, h('span', { class: 'n' }, st ? streakOf(st) : '—')];
+  return [h('span', { class: 'nm' }, name), ...cells, h('span', { class: 'n' }, st ? streakOf(st) : '—')];
 }
 
 /* ---------- розклад занять: вт 17:00 граматика, ср 17:00 лексика ----------
@@ -1081,7 +1084,7 @@ function nextClass() {
 }
 function classLesson(tr) {
   if (tr === 'g' && C.lessons[lid('g', S.course)]) return C.lessons[lid('g', S.course)];
-  const nd = nextDay(tr); if (nd) return nd.L; const all = lessonsOf(tr); return all[all.length - 1] || null;
+  const all = lessonsOf(tr); return all[all.length - 1] || null; // крайній урок, а не той, де ти зараз на платформі
 }
 function warmupItems(L) {
   const mist = sample(mistakeItems(m => m.lid && m.lid[0] === L.track), 4);
@@ -1157,7 +1160,7 @@ VIEWS.today = main => {
   const now = new Date();
   const o = otherState();
   const parts = todayParts();
-  const doneToday = !!S.sessions[today()];
+  const doneToday = !!(S.daily || {})[today()] || (!parts.length && !!S.sessions[today()]);
   const allItems = parts.flatMap(p => p.items);
   const g = nextDay('g');
   const svT = !doneToday ? savedSession('today') : null, rc = resumeCard();
@@ -1416,7 +1419,7 @@ VIEWS.more = main => {
       CLOUD ? h('div', null, 'Остання синхронізація: ', h('b', null, (SYNC.at || '—') + ' · ' + ({ ok: 'успішно', err: 'ПОМИЛКА ' + SYNC.err, saving: 'триває', local: 'ще не було' }[SYNC.state] || SYNC.state))) : null,
       h('div', null, 'Пройдено днів: ', h('b', null, Object.keys(S.done).length), ' · карток: ', h('b', null, Object.keys(S.cards).length), ' · серія: ', h('b', null, streakOf(S))),
       h('div', null, 'Дні: ', h('b', null, doneSummary() || '—')))),
-    h('p', { class: 'tiny muted' }, (CLOUD ? 'Версія: 2.5 (24.11)' : 'Версія: пілот 0.5') + ' · уроків завантажено: ' + Object.keys(C.lessons).length + (C.errors.length ? ' · помилка завантаження: ' + C.errors.join(', ') : ''))));
+    h('p', { class: 'tiny muted' }, (CLOUD ? 'Версія: 2.7 (25.11)' : 'Версія: пілот 0.5') + ' · уроків завантажено: ' + Object.keys(C.lessons).length + (C.errors.length ? ' · помилка завантаження: ' + C.errors.join(', ') : ''))));
 };
 function showExport(txt) { const ta = h('textarea', { class: 'txt', readonly: true, 'aria-label': 'Копія прогресу' }); ta.value = txt; dialog('Копія прогресу', h('div', { class: 'col' }, h('p', { class: 'small' }, 'Виділи весь текст і скопіюй.'), ta), [['Готово', () => { }]]); }
 function importDialog() {
@@ -1445,27 +1448,50 @@ function devLabel() {
 function ntDoc() {
   const next = ['g', 'v'].map(tr => { const nd = nextDay(tr); return nd ? TR_NAME[tr].toLowerCase() + ', урок ' + nd.L.num + ', день ' + nd.d.n : null; }).filter(Boolean).join(' · ');
   const lessons = {}; ['g', 'v'].forEach(tr => { const L = classLesson(tr); if (L) lessons[tr] = TR_NAME[tr] + ' · урок ' + L.num + ': ' + L.title; });
-  const sess = Object.keys(S.sessions || {}).sort(), cut = addDays(today(), -60), moves = {};
+  const sess = Object.keys(S.daily || {}).sort(), cut = addDays(today(), -60), moves = {};
   Object.entries(allMoves()).forEach(([k, v]) => { if (k >= cut) moves[k] = v; });
   let tz = 'Europe/Kyiv'; try { tz = Intl.DateTimeFormat().resolvedOptions().timeZone || tz; } catch (e) { }
-  return { v: 1, name: PROFILE, tz, on: !!NT.on, daily: NT.dailyOn ? NT.daily : '', cls: ON_COURSE[PROFILE] ? NT.cls || 0 : 0, devices: NT.devices, done: sess[sess.length - 1] || '', next, lessons, sched: { days: CLASSES, h: CLASS_TIME[0], m: CLASS_TIME[1] }, moves, test: NT.test || 0 };
+  return { v: 1, name: PROFILE, tz, on: !!NT.on, daily: NT.dailyOn ? NT.daily : '', cls: ON_COURSE[PROFILE] ? NT.cls || 0 : 0, devices: NT.devices, done: sess[sess.length - 1] || '', next, lessons, sched: { days: CLASSES, h: CLASS_TIME[0], m: CLASS_TIME[1] }, moves, test: NT.test || 0, sts: NT.sts || 0 };
 }
+/* Документ сповіщень спільний для всіх твоїх пристроїв. Щоб застосунок, який довго висів у фоні,
+   не затер свіжі налаштування чи підписки інших пристроїв, перед записом читаємо документ із бази й зливаємо:
+   налаштування — новіші за часом (sts), пристрої — чужі з бази, свій — із цього пристрою. */
+const NT_KEYS = ['on', 'daily', 'dailyOn', 'cls'];
+function ntAdopt(r) {
+  if (!r) return;
+  if ((r.sts || 0) > (NT.sts || 0)) Object.assign(NT, { on: r.on !== false, dailyOn: !!r.daily, daily: r.daily || NT.daily, cls: r.cls || 0, sts: r.sts || 0 });
+  const dev = Object.assign({}, r.devices || {});
+  if (NT.devices[DEV]) dev[DEV] = NT.devices[DEV]; else delete dev[DEV];
+  NT.devices = dev; NT.test = Math.max(NT.test || 0, r.test || 0);
+}
+let ntBusy = false;
 function ntSync(now) {
   if (!(CLOUD && UID && window.Cloud && window.Cloud.saveNotify && NT.loaded)) return;
-  clearTimeout(ntT); ntT = setTimeout(() => {
-    let json; try { json = JSON.stringify(ntDoc()); } catch (e) { return; }
-    if (json === NT_LAST) return;
-    window.Cloud.saveNotify(UID, json).then(() => { NT_LAST = json; }, e => { toast('Налаштування сповіщень не збереглися: ' + (e.code || e.message)); });
+  clearTimeout(ntT); ntT = setTimeout(async () => {
+    if (ntBusy) { ntSync(); return; } ntBusy = true;
+    try {
+      try { const d = await window.Cloud.loadNotify(UID); if (d && d.json && d.json !== NT_LAST) { ntAdopt(JSON.parse(d.json)); Store.set('nt.' + PROFILE, NT); } } catch (e) { /* офлайн — пишемо як є */ }
+      const json = JSON.stringify(ntDoc());
+      if (json !== NT_LAST) { await window.Cloud.saveNotify(UID, json); NT_LAST = json; }
+    } catch (e) { toast('Налаштування сповіщень не збереглися: ' + (e.code || e.message)); }
+    ntBusy = false;
   }, now ? 0 : 2500);
 }
-function ntSet(patch, now) { Object.assign(NT, patch); Store.set('nt.' + PROFILE, NT); ntSync(now); }
+function ntSet(patch, now) { Object.assign(NT, patch); if (NT_KEYS.some(k => k in patch)) NT.sts = Date.now(); Store.set('nt.' + PROFILE, NT); ntSync(now); }
 async function ntLoad() {
   NT = Object.assign(clone(NT_DEF), Store.get('nt.' + PROFILE, {}));
-  try { const d = await window.Cloud.loadNotify(UID); if (d && d.json) { const r = JSON.parse(d.json); NT_LAST = d.json; Object.assign(NT, { on: r.on !== false, dailyOn: !!r.daily, daily: r.daily || NT.daily, cls: r.cls || 0, devices: r.devices || {}, test: r.test || 0 }); } } catch (e) { /* офлайн — беремо локальну копію */ }
+  try { const d = await window.Cloud.loadNotify(UID); if (d && d.json) { const r = JSON.parse(d.json); NT_LAST = d.json; if (!NT.sts && !r.sts) NT.sts = -1; ntAdopt(r); } } catch (e) { /* офлайн — беремо локальну копію */ }
   NT.loaded = true; Store.set('nt.' + PROFILE, NT);
   if (NT.devices[DEV]) { try { await ntRefreshSub(); } catch (e) { } }
   ntSync();
 }
+/* застосунок повернувся з фону — підтягнути свіжі налаштування сповіщень */
+let ntPullAt = 0;
+document.addEventListener('visibilitychange', async () => {
+  if (document.visibilityState !== 'visible' || !NT.loaded || !(CLOUD && UID && window.Cloud) || Date.now() - ntPullAt < 30000) return;
+  ntPullAt = Date.now();
+  try { const d = await window.Cloud.loadNotify(UID); if (d && d.json && d.json !== NT_LAST) { ntAdopt(JSON.parse(d.json)); NT_LAST = d.json; Store.set('nt.' + PROFILE, NT); if (ROUTE === 'more' && $('#player').hidden) render(); } } catch (e) { }
+});
 const vapidBytes = () => { const s = VAPID_PUBLIC.replace(/-/g, '+').replace(/_/g, '/'); const b = atob(s + '='.repeat((4 - s.length % 4) % 4)); return Uint8Array.from(b, c => c.charCodeAt(0)); };
 async function ntSubscribe() {
   const reg = await navigator.serviceWorker.ready;
