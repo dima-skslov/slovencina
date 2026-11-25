@@ -753,9 +753,11 @@ RENDER.input = (it, root) => {
   const t = it.task;
   put(root, h('h1', null, t.q || 'Напиши відповідь'));
   const sentEl = sentence(t.sk); put(root, sentEl);
-  const bw = String(t.sk || '').includes('___') ? blankWord(it.L, t) : null;
+  // тренажер форм (showHint): що саме потрібно — одразу на синій плашці, без кнопки «Підказка»
+  if (t.showHint && (t.hint || t.uk)) put(root, h('div', { class: 'wordhint' }, t.hint ? h('b', { lang: 'sk' }, t.hint) : null, t.hint && t.uk ? ' · ' : null, t.uk ? '«' + t.uk + '»' : null));
+  const bw = !t.showHint && String(t.sk || '').includes('___') ? blankWord(it.L, t) : null;
   if (bw && bw.uk) put(root, h('div', { class: 'wordhint' }, 'Слово: ', h('b', null, bw.uk)));
-  const hw = hintEl(bw && bw.uk ? { hint: CYR.test(bw.note.replace(/\([^)]*\)/g, '').split(',')[0]) ? bw.sk : bw.note, uk: t.uk } : t); if (hw) put(root, hw);
+  const hw = t.showHint ? null : hintEl(bw && bw.uk ? { hint: CYR.test(bw.note.replace(/\([^)]*\)/g, '').split(',')[0]) ? bw.sk : bw.note, uk: t.uk } : t); if (hw) put(root, hw);
   const inp = h('input', { class: 'answer', id: 'ans', type: 'text', autocomplete: 'off', autocapitalize: 'off', spellcheck: 'false', lang: 'sk', 'aria-label': 'Твоя відповідь', oninput: () => enablePrimary(inp.value.trim().length > 0) });
   put(root, h('div', { class: 'col' }, h('label', { for: 'ans', class: 'small b muted' }, 'Твоя відповідь'), inp, diaBar(inp)));
   function check() {
@@ -1304,19 +1306,22 @@ VIEWS.sent = main => {
 /* тренажер форм */
 const CASE_Q = { N: 'N · Kto? Čo?', G: 'G · do / bez … (Koho? Čoho?)', D: 'D · k / ku … (Komu? Čomu?)', A: 'A · vidím … (Koho? Čo?)', L: 'L · o / v … (o kom? o čom?)', I: 'I · s / pred … (s kým? s čím?)' };
 const PERS = ['ja', 'ty', 'on / ona', 'my', 'vy', 'oni'];
+const TR_DEF = { cases: ['G', 'D', 'A', 'L', 'I'], nums: ['sg', 'pl'], tenses: ['pres', 'past', 'fut'] };
+const trPref = () => { const p = Object.assign({}, TR_DEF, Store.get('tr.pref.' + PROFILE, {})); ['cases', 'nums', 'tenses'].forEach(k => { if (!Array.isArray(p[k]) || !p[k].length) p[k] = TR_DEF[k]; }); return p; };
+const pickOne = a => a[Math.floor(Math.random() * a.length)];
 function trainerItems(mode, n) {
-  const out = [];
+  const out = [], pref = trPref();
   const forms = Object.values(C.lessons).flatMap(L => (L.forms || []).map(f => ({ L, f })));
   const verbs = Object.values(C.lessons).flatMap(L => (L.verbs || []).map(v => ({ L, v })));
   for (let i = 0; i < n; i++) {
     if ((mode === 'nouns' || (mode === 'mix' && Math.random() < 0.6)) && forms.length) {
       const { L, f } = forms[Math.floor(Math.random() * forms.length)];
-      const num = Math.random() < 0.55 ? 'sg' : 'pl'; const cs = 'NGDALI'[1 + Math.floor(Math.random() * 5)];
+      const num = pickOne(pref.nums), cs = pickOne(pref.cases);
       const a = String(f[num][CI[cs]]).split('/');
       out.push({ type: 'input', L, mkey: 'tr:' + f.lemma + ':' + num + cs, task: { t: 'input', showHint: true, q: 'Яка форма?', sk: f.lemma + ' → ___', hint: CASE_Q[cs] + ', ' + (num === 'sg' ? 'однина' : 'множина'), uk: f.uk, a, why: 'Взор **' + f.vzor + '**, ' + CNAME[cs] + ' ' + (num === 'sg' ? 'однини' : 'множини') + ': закінчення ' + PAT[f.vzor][num][CI[cs]] + '. Форма: **' + a.join(' / ') + '**.', cheat: f.vzor } });
     } else if (verbs.length) {
       const { L, v } = verbs[Math.floor(Math.random() * verbs.length)];
-      const tense = ['pres', 'past', 'fut'][Math.floor(Math.random() * 3)]; const p = Math.floor(Math.random() * 6);
+      const tense = pickOne(pref.tenses); const p = Math.floor(Math.random() * 6);
       const fem = tense === 'past' && p < 3 && Math.random() < 0.5;
       const raw = (fem ? v.pastf : v[tense])[p];
       const a = tense === 'past' ? raw.split(' ')[0].split('/').map(x => x + (raw.includes(' ') ? ' ' + raw.split(' ').slice(1).join(' ') : '')) : [raw];
@@ -1328,13 +1333,26 @@ function trainerItems(mode, n) {
 }
 VIEWS.trainer = main => {
   const has = Object.values(C.lessons).some(L => (L.forms || []).length || (L.verbs || []).length);
-  main.append(h('div', { class: 'stack', style: 'max-width:760px' }, h('h1', null, 'Тренажер форм'), h('p', { class: 'muted' }, 'Відмінки, рід, -a/-u, дієвідміни. 10 завдань з миттєвою перевіркою. Помилки потрапляють у «Помилки».'),
+  const pref = trPref();
+  const toggle = (k, v) => { const cur = trPref()[k]; const next = cur.includes(v) ? cur.filter(x => x !== v) : cur.concat(v); if (!next.length) { toast('Залиш хоча б один варіант'); return; } Store.set('tr.pref.' + PROFILE, Object.assign(trPref(), { [k]: next })); render(); };
+  const chips = (k, opts) => h('div', { class: 'row wrap', style: 'gap:6px' }, opts.map(([v, l]) => h('button', { class: 'chip' + (pref[k].includes(v) ? ' on' : ''), 'aria-pressed': pref[k].includes(v) ? 'true' : 'false', onclick: () => toggle(k, v) }, l)));
+  const go10 = mode => startSession({ title: 'Тренування завершено', label: 'Тренажер форм', parts: [{ items: trainerItems(mode, 10) }] });
+  main.append(h('div', { class: 'stack', style: 'max-width:760px' }, h('h1', null, 'Тренажер форм'), h('p', { class: 'muted' }, 'Відмінки іменників і форми дієслів зі слів пройдених уроків. 10 завдань з миттєвою перевіркою. Помилки потрапляють у «Помилки».'),
     has ? h('div', { class: 'col' },
-      h('button', { class: 'btn wide', onclick: () => startSession({ title: 'Тренування завершено', parts: [{ items: trainerItems('nouns', 10) }] }) }, 'Іменники (dub)'),
-      h('button', { class: 'btn blue wide', onclick: () => startSession({ title: 'Тренування завершено', parts: [{ items: trainerItems('verbs', 10) }] }) }, 'Дієслово ísť'),
-      h('button', { class: 'btn ghost wide', onclick: () => startSession({ title: 'Тренування завершено', parts: [{ items: trainerItems('mix', 10) }] }) }, 'Усе впереміш')) : h('p', null, 'Поки немає форм для тренування.'),
-    h('p', { class: 'tiny muted' }, 'Набір слів зростатиме з кожним новим уроком.')));
+      h('div', { class: 'card' }, h('h3', null, 'Іменники'),
+        h('span', { class: 'small b muted' }, 'Відмінки'),
+        chips('cases', [['G', 'G · родовий'], ['D', 'D · давальний'], ['A', 'A · знахідний'], ['L', 'L · місцевий'], ['I', 'I · орудний']]),
+        h('span', { class: 'small b muted' }, 'Число'),
+        chips('nums', [['sg', 'однина'], ['pl', 'множина']]),
+        h('button', { class: 'btn wide', onclick: () => go10('nouns') }, 'Тренувати іменники')),
+      h('div', { class: 'card' }, h('h3', null, 'Дієслова'),
+        h('span', { class: 'small b muted' }, 'Час'),
+        chips('tenses', [['pres', 'теперішній'], ['past', 'минулий'], ['fut', 'майбутній']]),
+        h('button', { class: 'btn blue wide', onclick: () => go10('verbs') }, 'Тренувати дієслова')),
+      h('button', { class: 'btn ghost wide', onclick: () => go10('mix') }, 'Усе впереміш')) : h('p', null, 'Поки немає форм для тренування.'),
+    h('p', { class: 'tiny muted' }, 'Вибір зберігається. Набір слів зростає з кожним новим уроком.')));
 };
+
 
 /* визначник окремо */
 VIEWS.det = main => {
@@ -1471,7 +1489,7 @@ VIEWS.more = main => {
       CLOUD ? h('div', null, 'Остання синхронізація: ', h('b', null, (SYNC.at || '—') + ' · ' + ({ ok: 'успішно', err: 'ПОМИЛКА ' + SYNC.err, saving: 'триває', local: 'ще не було' }[SYNC.state] || SYNC.state))) : null,
       h('div', null, 'Пройдено днів: ', h('b', null, Object.keys(S.done).length), ' · карток: ', h('b', null, Object.keys(S.cards).length), ' · серія: ', h('b', null, streakOf(S))),
       h('div', null, 'Дні: ', h('b', null, doneSummary() || '—')))),
-    h('p', { class: 'tiny muted' }, (CLOUD ? 'Версія: 2.9 (25.11)' : 'Версія: пілот 0.5') + ' · уроків завантажено: ' + Object.keys(C.lessons).length + (C.errors.length ? ' · помилка завантаження: ' + C.errors.join(', ') : ''))));
+    h('p', { class: 'tiny muted' }, (CLOUD ? 'Версія: 3.0 (26.11)' : 'Версія: пілот 0.5') + ' · уроків завантажено: ' + Object.keys(C.lessons).length + (C.errors.length ? ' · помилка завантаження: ' + C.errors.join(', ') : ''))));
 };
 function showExport(txt) { const ta = h('textarea', { class: 'txt', readonly: true, 'aria-label': 'Копія прогресу' }); ta.value = txt; dialog('Копія прогресу', h('div', { class: 'col' }, h('p', { class: 'small' }, 'Виділи весь текст і скопіюй.'), ta), [['Готово', () => { }]]); }
 function importDialog() {
