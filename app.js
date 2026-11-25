@@ -5,7 +5,7 @@
 const CLOUD = /(^|\.)github\.io$/.test(location.hostname) || location.hostname === 'localhost';
 const PILOT = !CLOUD;
 let UID = null; const OTHER = {}; let SYNC = { state: 'local', err: '' };
-const LESSON_FILES = ['lessons/g09.json', 'lessons/v08.json'];
+const LESSON_FILES = ['lessons/g09.json', 'lessons/v08.json', 'lessons/s01.json', 'lessons/s02.json', 'lessons/s03.json', 'lessons/s04.json', 'lessons/s05.json'];
 const NAMES = { dima: 'Діма', natasha: 'Наташа', marina: 'Марина', vlad: 'Влад' };
 /** кого не показувати у вогниках і календарі активності (переглядачі) */
 const NO_STREAK = { vlad: true };
@@ -19,6 +19,7 @@ const SRS_IV = [0, 1, 2, 4, 8, 16, 32];
 
 /* ---------- іконки (власні константи) ---------- */
 const I = {
+  sent: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.5" y="4" width="8" height="6" rx="2"/><rect x="13.5" y="4" width="8" height="6" rx="2"/><rect x="2.5" y="14" width="19" height="6" rx="2"/><path d="M6.5 10v4M17.5 10v4"/></svg>',
   sun: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4.5"/><path d="M12 2.5v2M12 19.5v2M4.6 4.6l1.4 1.4M18 18l1.4 1.4M2.5 12h2M19.5 12h2M4.6 19.4L6 18M18 6l1.4-1.4"/></svg>',
   moon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/></svg>',
   home: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 11l8-7 8 7v9H4z"/><path d="M10 20v-5h4v5"/></svg>',
@@ -159,6 +160,7 @@ function mergeState(a, b) {
   [older, newer].forEach(st => { const r = st.reset || {}; Object.entries(st.done || {}).forEach(([k, v]) => { const l = k.split(':')[0]; if ((r[l] || 0) >= (out.reset[l] || 0) && (!out.done[k] || v < out.done[k])) out.done[k] = v; }); });
   out.sessions = Object.assign({}, older.sessions || {}, newer.sessions || {});
   out.daily = Object.assign({}, older.daily || {}, newer.daily || {});
+  out.sent = Object.assign({}, older.sent || {}); Object.entries(newer.sent || {}).forEach(([k, v]) => { if (!out.sent[k] || v > out.sent[k]) out.sent[k] = v; });
   out.cards = Object.assign({}, older.cards || {});
   Object.entries(newer.cards || {}).forEach(([k, c]) => { const o = out.cards[k]; if (!o || String(c.due || '') >= String(o.due || '')) out.cards[k] = c; });
   const tx = {}; (older.texts || []).forEach(t => { tx[t.id] = t; }); (newer.texts || []).forEach(t => { tx[t.id] = t; }); out.texts = Object.values(tx);
@@ -186,14 +188,31 @@ function othersAll() { return Object.keys(NAMES).filter(p => p !== PROFILE && !N
 function otherState() { const o = PROFILE === 'dima' ? 'natasha' : 'dima'; if (CLOUD) return { id: o, st: OTHER[o] || null }; const st = Store.get('p.' + o, null); return st ? { id: o, st: Object.assign(newState(), st) } : { id: o, st: null }; }
 
 /* ---------- вміст ---------- */
-const C = { lessons: {}, errors: [] };
+const C = { lessons: {}, banks: {}, errors: [] };
 function addLessonObj(L, src) {
-  const E = validateLesson(L);
+  const E = validateAny(L);
   if (E.length) { C.errors.push(src + ': ' + E[0]); return false; }
-  C.lessons[L.id] = L; return true;
+  storeContent(L); return true;
+}
+function storeContent(L) { if (L.track === 's') C.banks[L.id] = L; else C.lessons[L.id] = L; }
+const validateAny = L => L && L.track === 's' ? validateBank(L) : validateLesson(L);
+/** банк речень тренажера: {schema:1, id:'s01', track:'s', num:1..5, title, desc, items:[{id, uk, sk:[…], hint}]} */
+function validateBank(L) {
+  const E = [];
+  if (L.schema !== 1) E.push('schema має бути 1');
+  if (!Number.isInteger(L.num) || L.num < 1 || L.num > 9) E.push('num: рівень від 1 до 9');
+  if (L.id !== 's' + pad(L.num)) E.push('id має бути "s' + pad(L.num) + '"');
+  if (typeof L.title !== 'string' || !L.title) E.push('немає title');
+  if (!Array.isArray(L.items) || !L.items.length) E.push('немає речень (items)');
+  const ids = new Set();
+  (L.items || []).forEach((x, i) => {
+    if (!x || typeof x.id !== 'string' || typeof x.uk !== 'string' || !x.uk || !Array.isArray(x.sk) || !x.sk.length || x.sk.some(v => typeof v !== 'string' || !v)) E.push('речення ' + (i + 1) + ': потрібні id, uk і sk (масив варіантів)');
+    else if (ids.has(x.id)) E.push('речення ' + (i + 1) + ': повторюється id ' + x.id); else ids.add(x.id);
+  });
+  return E;
 }
 async function loadContent() {
-  C.lessons = {}; C.errors = [];
+  C.lessons = {}; C.banks = {}; C.errors = [];
   if (CLOUD) {
     const docs = await window.Cloud.loadLessons();
     docs.forEach(d => { try { addLessonObj(JSON.parse(d.json), d.id); } catch (e) { C.errors.push(d.id); } });
@@ -204,7 +223,7 @@ async function loadContent() {
     try {
       const r = await fetch(f, { cache: 'no-cache' });
       const L = await r.json();
-      if (!C.lessons[L.id]) addLessonObj(L, f);
+      if (!C.lessons[L.id] && !C.banks[L.id]) addLessonObj(L, f);
     } catch (e) { C.errors.push(f); }
   }
 }
@@ -319,7 +338,7 @@ function render() {
 }
 const NAV = [
   ['today', 'Сьогодні', 'home', true], ['lessons', 'Уроки', 'path', true], ['cards', 'Картки', 'cards', true], ['cheats', 'Шпаргалки', 'sheet', true],
-  ['trainer', 'Тренажер форм', 'trainer'], ['det', 'Визначник', 'det'], ['mistakes', 'Помилки', 'redo'], ['reading', 'Читання', 'book'],
+  ['sent', 'Тренажер речень', 'sent'], ['trainer', 'Тренажер форм', 'trainer'], ['det', 'Визначник', 'det'], ['mistakes', 'Помилки', 'redo'], ['reading', 'Читання', 'book'],
   ['texts', 'Мої тексти', 'pen'], ['phrases', 'Фрази', 'chat'], ['eslovak', 'e-slovak', 'link'], ['add', 'Додати урок', 'plus'], ['more', 'Налаштування', 'gear']
 ];
 function renderNav(cur) {
@@ -507,7 +526,7 @@ function showItem() {
   const cb = $('#pl-cheatbtn'); cb.hidden = !cheat; cb.onclick = () => openCheat(it.L, cheat);
   const body = $('#pl-body'); body.replaceChildren(); body.scrollTop = 0;
   const inner = h('div', { class: 'pl-inner' });
-  const kick = it.L ? h('div', { class: 'kicker' + (it.L.track === 'v' ? ' v' : '') }, (it.L.track === 'g' ? 'Граматика' : 'Лексика') + ' · урок ' + it.L.num + (it.fromMistakes ? ' · помилка' : '') + (it.mini ? ' · повтор' : '') + (it.retry ? ' · ще раз' : '')) : null;
+  const kick = !it.L && it.task && it.task.kick ? h('div', { class: 'kicker' }, it.task.kick + (it.fromMistakes ? ' · помилка' : '') + (it.retry ? ' · ще раз' : '')) : it.L ? h('div', { class: 'kicker' + (it.L.track === 'v' ? ' v' : '') }, (it.L.track === 'g' ? 'Граматика' : 'Лексика') + ' · урок ' + it.L.num + (it.fromMistakes ? ' · помилка' : '') + (it.mini ? ' · повтор' : '') + (it.retry ? ' · ще раз' : '')) : null;
   if (kick) inner.append(kick);
   body.append(inner);
   const R = RENDER[it.type];
@@ -531,6 +550,7 @@ function enablePrimary(on) { const b = $('#pl-primary'); if (b) b.disabled = !on
 function feedback(it, res) {
   const first = !it.answered; it.answered = true;
   sfx(res.status);
+  if (it.task && it.task.sid && res.status !== 'bad') { S.sent = S.sent || {}; S.sent[it.task.sid] = today(); }
   if (res.status === 'ok') { PL.stats.ok++; if (it.fromMistakes || it.retry) fixMistake(it); }
   else if (res.status === 'almost') { PL.stats.almost++; addMistake(it); }
   else { PL.stats.bad++; addMistake(it); if (!PL.retried.has(PL.i) && !it.retry) { PL.retried.add(PL.i); PL.items.push(Object.assign({}, it, { retry: true, answered: false, part: -1 })); PL.total++; } }
@@ -540,7 +560,7 @@ function feedback(it, res) {
   const fb = h('div', { class: 'fb', role: 'status' }, h('div', { class: 't' }, title));
   if (res.status === 'almost') fb.append(h('div', null, 'Правильно: ', highlightMissing(res.answer, res.user), '. Перевір діакритику.'));
   if (res.status === 'bad' && res.answer) fb.append(h('div', null, 'Правильна відповідь: ', h('b', null, res.answer)));
-  if (res.why) fb.append(h('div', null, h('b', null, 'Чому: '), rich(res.why)));
+  if (res.why) fb.append(h('div', null, h('b', null, (it.task && it.task.whyLabel) || 'Чому: '), rich(res.why)));
   if (res.status !== 'ok' && it.mkey) fb.append(h('div', { class: 'tiny' }, 'Це завдання повернеться в «Помилках».'));
   const nb = h('button', { class: 'btn wide ' + (res.status === 'ok' ? '' : 'orange'), id: 'pl-primary', onclick: next }, res.status === 'ok' ? 'Далі' : 'Зрозуміло');
   foot.replaceChildren(h('div', { class: 'in' }, fb, h('div', { class: 'foot-act' }, nb, h('div', { class: 'keys' }, 'Enter · далі'))));
@@ -1187,6 +1207,7 @@ VIEWS.today = main => {
         h('div', { class: 'card' }, h('h3', null, 'Активність за 2 тижні'), h('div', { class: 'cal' }, NO_STREAK[PROFILE] ? null : calendarRow(NAMES[PROFILE], S), othersAll().map(x => calendarRow(NAMES[x.id], x.st)))),
         CLOUD && ON_COURSE[PROFILE] && !Object.keys(S.done).length && !Object.keys(S.cards).length ? h('div', { class: 'card' }, h('h3', null, 'Є прогрес з пілоту?'), h('p', { class: 'small muted' }, 'У пілоті: Налаштування → «Скопіювати копію». Тут: Налаштування → «Відновити з копії».'), h('button', { class: 'btn ghost small', onclick: importDialog }, 'Відновити з копії')) : null,
         !Object.keys(C.lessons).length ? h('a', { class: 'card', href: '#add', style: 'text-decoration:none;color:inherit' }, h('h3', null, 'Уроків ще немає'), h('p', { class: 'small muted' }, 'Додай перший урок: розділ «Додати урок».')) : null,
+        Object.keys(C.banks).length ? h('a', { class: 'card', href: '#sent', style: 'text-decoration:none;color:inherit' }, h('div', { class: 'spread' }, h('div', { class: 'col', style: 'gap:2px' }, h('span', { class: 'b' }, 'Тренажер речень'), h('span', { class: 'small muted' }, 'Переклади українське речення словацькою · рівні 1–' + Object.keys(C.banks).length)), h('span', { class: 'ico s', html: I.sent }))) : null,
         mistakeCount() ? h('a', { class: 'card', href: '#mistakes', style: 'text-decoration:none;color:inherit' }, h('div', { class: 'spread' }, h('span', { class: 'b' }, 'Помилки до повторення'), h('span', { class: 'badge' }, mistakeCount()))) : null
       )
     )
@@ -1247,6 +1268,37 @@ VIEWS.cheat = (main, rest) => {
   const [l, ...cid] = rest.split('-'); const L = C.lessons[l]; const c = findCheat(L, cid.join('-'));
   if (!c) { main.append(h('p', null, 'Шпаргалку не знайдено.')); return; }
   main.append(h('div', { class: 'stack', style: 'max-width:760px' }, h('a', { href: '#cheats', class: 'small b' }, '← Усі шпаргалки'), h('span', { class: 'kicker' }, 'Урок ' + L.num), h('h1', null, c.title), renderBlocks(c.blocks)));
+};
+
+/* ---------- тренажер речень: українське речення → словацькою ---------- */
+const sentPref = () => Object.assign({ lvl: 1, n: 10 }, Store.get('sent.pref.' + PROFILE, {}));
+function sentStats(B) { const sent = S.sent || {}; const solved = B.items.filter(x => sent[x.id]).length; return { solved, total: B.items.length }; }
+/** n речень рівня: спершу ті, що ще не розв'язував, потім найдавніші */
+function sentPick(B, n) {
+  const sent = S.sent || {};
+  const fresh = shuffle(B.items.filter(x => !sent[x.id]));
+  const old = shuffle(B.items.filter(x => sent[x.id])).sort((a, b) => sent[a.id] < sent[b.id] ? -1 : sent[a.id] > sent[b.id] ? 1 : 0);
+  return fresh.concat(old).slice(0, n);
+}
+function startSent(B, n) {
+  const kick = 'Тренажер речень · рівень ' + B.num;
+  const items = sentPick(B, n).map(x => ({ type: 'tr', L: null, mkey: 'sent:' + x.id, task: { t: 'tr', q: 'Переклади словацькою', uk: x.uk, a: x.sk, hint: x.hint || '', why: x.sk.length > 1 ? x.sk.slice(1).join(' · ') : '', whyLabel: 'Можна й так: ', kick, sid: x.id } }));
+  startSession({ title: 'Тренування пройдено', label: kick, resumeKey: 'sent:' + B.id, parts: [{ items }] });
+}
+VIEWS.sent = main => {
+  const banks = Object.values(C.banks).sort((a, b) => a.num - b.num), pref = sentPref();
+  if (!banks.length) { main.append(h('div', { class: 'stack', style: 'max-width:760px' }, h('h1', null, 'Тренажер речень'), h('div', { class: 'note' }, 'Речень ще немає. Додай файли рівнів через «Додати урок».'))); return; }
+  const lvl = banks.find(b => b.num === pref.lvl) || banks[0];
+  const setP = p => { Store.set('sent.pref.' + PROFILE, Object.assign(sentPref(), p)); render(); };
+  main.append(h('div', { class: 'stack', style: 'max-width:760px' },
+    h('h1', null, 'Тренажер речень'),
+    h('p', { class: 'muted' }, 'Платформа дає речення українською, ти пишеш його словацькою. Спершу йдуть речення, які ти ще не розв\'язував. Неправильні потрапляють у «Помилки».'),
+    h('div', { class: 'list' }, banks.map(B => { const st = sentStats(B), on = B === lvl; return h('button', { class: 'card lvl' + (on ? ' on' : ''), 'aria-pressed': on ? 'true' : 'false', onclick: () => setP({ lvl: B.num }) },
+      h('div', { class: 'spread' }, h('span', { class: 'b' }, B.title), h('span', { class: 'small muted b' }, st.solved + '/' + st.total)),
+      B.desc ? h('span', { class: 'small muted', style: 'text-align:left' }, B.desc) : null,
+      h('div', { class: 'bar' }, h('i', { style: 'width:' + Math.round(100 * st.solved / st.total) + '%' }))); })),
+    h('div', { class: 'card' }, h('div', { class: 'spread wrap' }, h('span', { class: 'b' }, 'Скільки речень'), h('div', { class: 'row', style: 'gap:6px' }, [5, 10, 15, 20].map(n => h('button', { class: 'chip' + (pref.n === n ? ' on' : ''), 'aria-pressed': pref.n === n ? 'true' : 'false', onclick: () => setP({ n }) }, String(n))))),
+      h('button', { class: 'btn wide', onclick: () => startSent(lvl, pref.n) }, 'Почати: ' + lvl.title.split(' · ')[0].toLowerCase() + ', ' + pref.n + ' речень'))));
 };
 
 /* тренажер форм */
@@ -1419,7 +1471,7 @@ VIEWS.more = main => {
       CLOUD ? h('div', null, 'Остання синхронізація: ', h('b', null, (SYNC.at || '—') + ' · ' + ({ ok: 'успішно', err: 'ПОМИЛКА ' + SYNC.err, saving: 'триває', local: 'ще не було' }[SYNC.state] || SYNC.state))) : null,
       h('div', null, 'Пройдено днів: ', h('b', null, Object.keys(S.done).length), ' · карток: ', h('b', null, Object.keys(S.cards).length), ' · серія: ', h('b', null, streakOf(S))),
       h('div', null, 'Дні: ', h('b', null, doneSummary() || '—')))),
-    h('p', { class: 'tiny muted' }, (CLOUD ? 'Версія: 2.8 (25.11)' : 'Версія: пілот 0.5') + ' · уроків завантажено: ' + Object.keys(C.lessons).length + (C.errors.length ? ' · помилка завантаження: ' + C.errors.join(', ') : ''))));
+    h('p', { class: 'tiny muted' }, (CLOUD ? 'Версія: 2.9 (25.11)' : 'Версія: пілот 0.5') + ' · уроків завантажено: ' + Object.keys(C.lessons).length + (C.errors.length ? ' · помилка завантаження: ' + C.errors.join(', ') : ''))));
 };
 function showExport(txt) { const ta = h('textarea', { class: 'txt', readonly: true, 'aria-label': 'Копія прогресу' }); ta.value = txt; dialog('Копія прогресу', h('div', { class: 'col' }, h('p', { class: 'small' }, 'Виділи весь текст і скопіюй.'), ta), [['Готово', () => { }]]); }
 function importDialog() {
@@ -1603,8 +1655,8 @@ function parseLessonText(text) {
   return { lesson: out, parts };
 }
 function saveLessonEverywhere(L) {
-  if (CLOUD) return window.Cloud.saveLesson(L).then(() => { C.lessons[L.id] = L; });
-  const list = (Store.get('lessons.local', []) || []).filter(x => x.id !== L.id); list.push(L); Store.set('lessons.local', list); C.lessons[L.id] = L; return Promise.resolve();
+  if (CLOUD) return window.Cloud.saveLesson(L).then(() => { storeContent(L); });
+  const list = (Store.get('lessons.local', []) || []).filter(x => x.id !== L.id); list.push(L); Store.set('lessons.local', list); storeContent(L); return Promise.resolve();
 }
 
 VIEWS.add = main => {
@@ -1614,10 +1666,10 @@ VIEWS.add = main => {
   file.addEventListener('change', () => {
     const fs = [...file.files]; if (!fs.length) return;
     if (fs.length === 1) { const r = new FileReader(); r.onload = () => { ta.value = String(r.result); check(); }; r.readAsText(fs[0]); return; }
-    Promise.all(fs.map(f => f.text().then(txt => { try { const L = parseLessonText(txt).lesson; const E = validateLesson(L); return { name: f.name, L, E }; } catch (e) { return { name: f.name, E: ['не JSON'] }; } }))).then(list => {
+    Promise.all(fs.map(f => f.text().then(txt => { try { const L = parseLessonText(txt).lesson; const E = validateAny(L); return { name: f.name, L, E }; } catch (e) { return { name: f.name, E: ['не JSON'] }; } }))).then(list => {
       const ok = list.filter(x => !x.E.length);
       out.replaceChildren(h('div', { class: 'card' }, h('h3', null, 'Файлів: ' + list.length + ' · готові: ' + ok.length),
-        h('ul', { class: 'small', style: 'margin:0;padding-left:20px;line-height:1.6' }, list.map(x => h('li', null, x.L && x.L.id ? (x.L.track === 'g' ? 'Граматика ' : 'Лексика ') + x.L.num + ' · ' + x.L.title : x.name, x.E.length ? h('span', { style: 'color:var(--orange-t)' }, ' — ' + x.E.slice(0, 2).join('; ')) : (C.lessons[x.L.id] ? ' (замінить наявний)' : ' (новий)')))),
+        h('ul', { class: 'small', style: 'margin:0;padding-left:20px;line-height:1.6' }, list.map(x => h('li', null, x.L && x.L.id ? (x.L.track === 's' ? 'Тренажер речень · ' + x.L.title + ' (' + (x.L.items || []).length + ' речень)' : (x.L.track === 'g' ? 'Граматика ' : 'Лексика ') + x.L.num + ' · ' + x.L.title) : x.name, x.E.length ? h('span', { style: 'color:var(--orange-t)' }, ' — ' + x.E.slice(0, 2).join('; ')) : (C.lessons[x.L.id] ? ' (замінить наявний)' : ' (новий)')))),
         ok.length ? h('button', { class: 'btn wide', onclick: async e => { e.target.disabled = true; let n = 0; for (const x of ok) { try { await saveLessonEverywhere(x.L); n++; e.target.textContent = 'Збережено ' + n + ' з ' + ok.length; } catch (err) { toast(x.L.id + ': ' + (err.code || err.message)); } } toast('Збережено уроків: ' + n); go('lessons'); } }, 'Зберегти всі (' + ok.length + ')') : null));
     });
   });
@@ -1625,6 +1677,16 @@ VIEWS.add = main => {
     let L;
     let parts = 1;
     try { const r = parseLessonText(ta.value); L = r.lesson; parts = r.parts; } catch (e) { out.replaceChildren(h('div', { class: 'note' }, 'Не вдалося прочитати JSON: ' + e.message + '. Скопіюй відповідь Claude повністю.')); return; }
+    if (L && L.track === 's') {
+      const EB = validateBank(L);
+      if (EB.length) { out.replaceChildren(h('div', { class: 'note' }, h('b', null, 'Помилки в банку речень:'), h('ul', { class: 'small' }, EB.slice(0, 8).map(x => h('li', null, x))))); return; }
+      out.replaceChildren(h('div', { class: 'card raised' }, h('span', { class: 'kicker' }, 'Тренажер речень · попередній перегляд'), h('h2', null, L.title), L.desc ? h('p', { class: 'muted' }, L.desc) : null,
+        h('p', { class: 'small' }, 'Речень: ' + L.items.length + ' · варіантів перекладу: ' + L.items.reduce((n, x) => n + x.sk.length, 0)),
+        C.banks[L.id] ? h('div', { class: 'note' }, 'Рівень ' + L.num + ' уже є. Збереження замінить речення. Твій прогрес залишиться.') : null,
+        h('button', { class: 'btn ghost', onclick: () => startSent(L, 5) }, 'Спробувати 5 речень'),
+        h('button', { class: 'btn wide', onclick: e => { e.target.disabled = true; saveLessonEverywhere(L).then(() => { toast('Рівень збережено'); go('sent'); }, err => { e.target.disabled = false; toast('Не вдалося зберегти: ' + (err.code || err.message)); }); } }, 'Зберегти')));
+      return;
+    }
     const E = validateLesson(L);
     if (E.length) {
       const onlyPart1 = !Array.isArray(L.days);

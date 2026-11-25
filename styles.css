@@ -333,3 +333,6 @@ textarea.answer{height:auto;resize:vertical;min-height:62px;line-height:1.4;padd
 .wordhint b{font-weight:900}
 
 .cal .nm{white-space:nowrap;padding-right:6px}
+.ico.s{background:var(--green-l);color:var(--green-t)}
+.card.lvl{display:flex;flex-direction:column;gap:8px;width:100%;text-align:left;cursor:pointer;font:inherit;color:inherit}
+.card.lvl.on{border-color:var(--green);box-shadow:0 0 0 2px var(--green) inset}
