@@ -35,7 +35,7 @@ const V_TOPICS = { 1: 'Абетка, вимова, знайомство', 2: 'М
 const DIA = ['á', 'ä', 'č', 'ď', 'é', 'í', 'ĺ', 'ľ', 'ň', 'ó', 'ô', 'ŕ', 'š', 'ť', 'ú', 'ý', 'ž'];
 const SRS_IV = [0, 1, 2, 4, 8, 16, 32];
 const DAILY_CARDS = 15; // карток у сесії на сьогодні
-const APP_VERSION = '3.7 (28.11)';
+const APP_VERSION = '3.8 (28.11)';
 
 /* ---------- іконки (власні константи) ---------- */
 const I = {
@@ -56,6 +56,7 @@ const I = {
   link: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 14l4-4M9 7l2-2a4 4 0 0 1 6 6l-2 2M15 17l-2 2a4 4 0 0 1-6-6l2-2"/></svg>',
   eye: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>',
   eyeoff: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.6 5.1A10.6 10.6 0 0 1 12 5c6.4 0 10 7 10 7a17 17 0 0 1-2.7 3.6M6.6 6.6C3.7 8.4 2 12 2 12s3.6 7 10 7a9.6 9.6 0 0 0 5.4-1.6"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2M3 3l18 18"/></svg>',
+  flag: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 21V4"/><path d="M5 4h12l-2.5 4.5L17 13H5"/></svg>',
   help: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9.5"/><path d="M9.3 9.2a2.8 2.8 0 0 1 5.4 1c0 1.9-2.7 2.5-2.7 4.1"/><path d="M12 17.6h.01"/></svg>',
   chart: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M21 20H3"/></svg>',
   users: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.6-3.6 3.3-5.5 6.5-5.5s5.9 1.9 6.5 5.5"/><path d="M16 4.6a3.4 3.4 0 0 1 0 6.8M18.5 14.8c1.7.8 2.8 2.6 3 5.2"/></svg>',
@@ -396,11 +397,19 @@ const NAV = [
 ];
 /** пункти меню з урахуванням ролі: «Додати урок» — редакторам, «Учасники» — адміну (у хмарі) */
 const navItems = () => NAV.filter(([r]) => (r !== 'add' || canEdit() || !CLOUD) && (!['people', 'analytics'].includes(r) || (CLOUD && isAdmin())));
+/** позначка біля пункту меню: число помилок, нові повідомлення (адміну), відповідь на твоє повідомлення, немає озвучки */
+function navMark(r) {
+  if (r === 'mistakes' && mistakeCount()) return h('span', { class: 'badge' }, mistakeCount());
+  if (r === 'analytics' && CLOUD && isAdmin() && repNew()) return h('span', { class: 'badge', title: 'Нові повідомлення про проблеми' }, repNew());
+  if (r === 'help' && repUnseen().length) return h('span', { class: 'ndot', title: 'Є відповідь на твоє повідомлення' });
+  if (r === 'more' && ttsDot()) return h('span', { class: 'ndot', title: 'Немає словацької озвучки' });
+  return null;
+}
 /** службові пункти — внизу бічного меню, окремо від навчальних */
 const NAV_TAIL = ['people', 'analytics', 'help', 'more'];
 function renderNav(cur) {
-  const dot = ttsDot();
-  const navLink = ([r, label, ic]) => h('a', { class: 'nav' + (active === r ? ' on' : ''), href: '#' + r }, icon(ic), label, r === 'mistakes' && mistakeCount() ? h('span', { class: 'badge' }, mistakeCount()) : null, r === 'more' && dot ? h('span', { class: 'ndot', title: 'Немає словацької озвучки' }) : null);
+  const dot = ttsDot() || repUnseen().length > 0 || (CLOUD && isAdmin() && repNew() > 0);
+  const navLink = ([r, label, ic]) => h('a', { class: 'nav' + (active === r ? ' on' : ''), href: '#' + r }, icon(ic), label, navMark(r));
   const map = { lesson: 'lessons', cheat: 'cheats', read: 'reading', text: 'texts', howto: 'add', person: 'people' };
   const active = map[cur] || cur;
   const side = $('#side'); side.replaceChildren(
@@ -446,9 +455,18 @@ const ttsMissing = () => !('speechSynthesis' in window) || (VOICE_READY && !SK_V
 const TTS_SEEN = 'sk.ttsHintSeen';
 const ttsDot = () => { if (!ttsMissing()) return false; try { return !localStorage.getItem(TTS_SEEN); } catch (e) { return false; } };
 function ttsSeen() { if (!ttsDot()) return; try { localStorage.setItem(TTS_SEEN, '1'); } catch (e) { } renderNav(ROUTE.split('-')[0]); }
-setTimeout(() => { if (VOICE_READY) return; VOICE_READY = true; if (!SK_VOICE && PROFILE && $('#side')) { if (ROUTE.split('-')[0] === 'more' && $('#player').hidden) render(); else renderNav(ROUTE.split('-')[0]); } }, 4000);
+/** аналітика: чи є словацький голос на цьому пристрої — раз за запуск і щоразу, коли стан змінився */
+let TTS_SENT = '';
+function ttsReport() {
+  if (!UID || !(VOICE_READY || !('speechSynthesis' in window))) return;
+  const st = SK_VOICE ? 'ok:' + SK_VOICE.name : 'no'; if (st === TTS_SENT) return; TTS_SENT = st;
+  let n = 0; try { n = speechSynthesis.getVoices().length; } catch (e) { }
+  const d = devInfo();
+  track('tts', { d: DEV, ok: SK_VOICE ? 1 : 0, vn: SK_VOICE ? SK_VOICE.name : '', n, plat: d.plat, br: d.br, pwa: d.pwa });
+}
+setTimeout(() => { if (VOICE_READY) return; VOICE_READY = true; ttsReport(); if (ONB) ONB.draw(); if (!SK_VOICE && PROFILE && $('#side')) { if (ROUTE.split('-')[0] === 'more' && $('#player').hidden) render(); else renderNav(ROUTE.split('-')[0]); } }, 4000);
 function stopSpeech() { try { speechSynthesis.cancel(); } catch (e) { } }
-try { findVoice(); speechSynthesis.onvoiceschanged = () => { const had = !!SK_VOICE, ready = VOICE_READY; findVoice(); if (!PROFILE || !$('#side')) return; if (!had && SK_VOICE && $('#player').hidden) render(); else if (!ready && VOICE_READY && !SK_VOICE) { if (ROUTE.split('-')[0] === 'more' && $('#player').hidden) render(); else renderNav(ROUTE.split('-')[0]); } }; } catch (e) { }
+try { findVoice(); speechSynthesis.onvoiceschanged = () => { const had = !!SK_VOICE, ready = VOICE_READY; findVoice(); ttsReport(); if (ONB) ONB.draw(); if (!PROFILE || !$('#side')) return; if (!had && SK_VOICE && $('#player').hidden) render(); else if (!ready && VOICE_READY && !SK_VOICE) { if (ROUTE.split('-')[0] === 'more' && $('#player').hidden) render(); else renderNav(ROUTE.split('-')[0]); } }; } catch (e) { }
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') stopSpeech(); });
 window.addEventListener('pagehide', stopSpeech);
 function speakBtn(text, light) {
@@ -596,7 +614,7 @@ function showItem() {
   closeCheat(); stopSpeech();
   if (PL.i >= PL.items.length) return endSession();
   const it = PL.items[PL.i]; PL.cur = it; PL.shownAt = Date.now();
-  progressUI();
+  progressUI(); const rb = $('#pl-report'); if (rb) rb.hidden = !CLOUD;
   const cheatId = it.task && it.task.cheat;
   const cheat = findCheat(it.L, cheatId) || (it.L && it.L.cheats && it.L.cheats.length && GRADED.includes(it.type) ? it.L.cheats[0] : null);
   const cb = $('#pl-cheatbtn'); cb.hidden = !cheat; cb.onclick = () => openCheat(it.L, cheat);
@@ -635,7 +653,9 @@ function feedback(it, res) {
   const first = !it.answered; it.answered = true;
   if (first) {
     const body = $('#pl-body'), field = body && body.querySelector('#ans, #detans, textarea'), badOpt = body && (body.querySelector('.opt.bad span[lang]') || body.querySelector('.opt.bad'));
-    const ua = res.status === 'ok' ? '' : (res.user || (field && field.value) || (badOpt && badOpt.textContent) || '');
+    const uv = res.user || (field && field.value) || (badOpt && badOpt.textContent) || '', ua = res.status === 'ok' ? '' : uv;
+    /* для «Повідомити про проблему»: що відповів і що очікувалось (лише в пам'яті сесії) */
+    it._st = res.status; it._user = uv; it._exp = res.answer || '';
     track('ans', { k: it.mkey || (it.task && it.task.sid ? 'sent:' + it.task.sid : ''), l: it.L ? it.L.id : '', y: /:q\d+$/.test(it.mkey || '') ? 'read' : (it.task && it.task.t) || it.type, st: res.status, ms: PL.shownAt ? Date.now() - PL.shownAt : 0, u: ua, h: it._hint ? 1 : 0, c: it._cheat ? 1 : 0, rt: it.retry ? 1 : 0, mi: it.fromMistakes ? 1 : 0, mn: it.mini ? 1 : 0, sk: PL.resumeKey });
   }
   sfx(res.status);
@@ -653,6 +673,7 @@ function feedback(it, res) {
   if (res.why) fb.append(h('div', null, h('b', null, (it.task && it.task.whyLabel) || 'Чому: '), it.task && it.task.whyLabel ? h('span', { lang: 'sk' }, tapText(res.why, fpop)) : rich(res.why)));
   if ((res.status === 'bad' && res.answer) || (it.task && it.task.whyLabel)) fb.append(fpop);
   if (res.status !== 'ok' && it.mkey) fb.append(h('div', { class: 'tiny' }, res.status === 'bad' && retryOn() && !it.retry ? 'Повториш його в кінці сесії. Правильно — і воно не піде в «Помилки».' : 'Завдання збережено в «Помилки».'));
+  if (res.status !== 'ok' && CLOUD) fb.append(h('button', { class: 'link tiny replink', onclick: () => reportDialog(it) }, icon('flag'), 'Повідомити про проблему'));
   /* новинка: один раз, при першій неправильній відповіді */
   if (res.status === 'bad' && !(S.news && S.news.retry)) {
     const inner = $('#pl-body .pl-inner');
@@ -678,7 +699,7 @@ function markPart(it) {
 }
 function next() { if (PL.cur && !PL.cur.answered) { PL.cur.answered = true; markPart(PL.cur); } PL.i++; showItem(); }
 function endSession() {
-  dropSession(PL.resumeKey);
+  dropSession(PL.resumeKey); const rb = $('#pl-report'); if (rb) rb.hidden = true;
   track('se', { k: PL.resumeKey, n: PL.total, ok: PL.stats.ok, bad: PL.stats.bad, al: PL.stats.almost, s: Math.round((Date.now() - PL.started) / 1000) }); flushAn();
   const mins = Math.max(1, Math.round((Date.now() - PL.started) / 60000));
   if (PL.onEnd) PL.onEnd();
@@ -1828,7 +1849,7 @@ function ttsRow() {
 }
 VIEWS.more = main => {
   main.append(h('div', { class: 'stack', style: 'max-width:760px' }, h('h1', { class: 'morenav' }, 'Ще'),
-    h('div', { class: 'card morenav' }, h('div', { class: 'list' }, navItems().filter(n => !n[3] && n[0] !== 'more').map(([r, label, ic]) => h('a', { class: 'li', href: '#' + r, style: 'text-decoration:none;color:inherit' }, h('span', { class: 'ico g', html: I[ic] }), h('span', { class: 'b grow' }, label), r === 'mistakes' && mistakeCount() ? h('span', { class: 'badge' }, mistakeCount()) : null)))),
+    h('div', { class: 'card morenav' }, h('div', { class: 'list' }, navItems().filter(n => !n[3] && n[0] !== 'more').map(([r, label, ic]) => h('a', { class: 'li', href: '#' + r, style: 'text-decoration:none;color:inherit' }, h('span', { class: 'ico g', html: I[ic] }), h('span', { class: 'b grow' }, label), navMark(r))))),
     h('h2', { class: 'settings-h' }, 'Налаштування'),
     h('div', { class: 'card settings' },
       h('div', { class: 'spread' }, h('div', { class: 'col', style: 'gap:2px;min-width:0' }, h('span', null, 'Профіль: ', h('b', null, NAMES[PROFILE]), roleOf(PROFILE) ? ' · ' + ROLE_UA[roleOf(PROFILE)] : ''), CLOUD && window.Cloud && window.Cloud.email ? h('span', { class: 'tiny muted', style: 'overflow-wrap:anywhere' }, window.Cloud.email) : null), h('button', { class: 'btn ghost small', onclick: switchProfile }, CLOUD ? 'Вийти' : 'Змінити')),
@@ -1836,6 +1857,7 @@ VIEWS.more = main => {
       h('div', { class: 'spread' }, h('span', null, 'Я вчу: ', h('b', null, 'уроки з ' + focusNum() + '-го')), h('button', { class: 'btn ghost small', onclick: chooseFocus }, 'Змінити')),
       !onCourse() ? null : h('div', { class: 'spread' }, h('span', null, 'Курс зараз на уроці: ', h('b', null, courseNum())), canEdit() || !CLOUD ? h('button', { class: 'btn ghost small', onclick: chooseCourse }, 'Змінити') : null),
       ttsRow(),
+      INSTALL_EVT && !isStandalone() ? h('div', { class: 'spread' }, h('div', { class: 'col', style: 'gap:2px;min-width:0' }, h('span', null, 'Застосунок: ', h('b', null, 'не встановлено')), h('span', { class: 'tiny muted' }, 'Окрема іконка, весь екран, надійніші сповіщення.')), h('button', { class: 'btn ghost small', onclick: () => installApp(() => render()) }, 'Встановити')) : null,
       h('div', { class: 'spread' }, h('span', null, 'Звуки відповідей: ', h('b', null, S.settings.sound === false ? 'вимкнено' : 'увімкнено')), h('button', { class: 'btn ghost small', onclick: () => { S.settings.sound = S.settings.sound === false; save(); render(); if (S.settings.sound !== false) sfx('ok'); } }, S.settings.sound === false ? 'Увімкнути' : 'Вимкнути')),
       h('div', { class: 'spread' }, h('div', { class: 'col', style: 'gap:2px' }, h('span', null, 'Повтор помилок у кінці сесії: ', h('b', null, retryOn() ? 'увімкнено' : 'вимкнено')), h('span', { class: 'tiny muted' }, retryOn() ? 'Неправильну відповідь повториш у кінці сесії; правильно — і вона не піде в «Помилки».' : 'Неправильні відповіді одразу йдуть у розділ «Помилки».')),
         h('button', { class: 'btn ghost small', onclick: () => { S.settings.retry = !retryOn(); S.news = Object.assign({}, S.news, { retry: S.news && S.news.retry || today() }); save(); render(); } }, retryOn() ? 'Вимкнути' : 'Увімкнути')),
@@ -1980,6 +2002,213 @@ function notifyCard() {
       h('button', { class: 'btn ghost small', disabled: !nDev || !NT.on, onclick: () => { ntSet({ test: Date.now() }, true); toast('Тестове сповіщення прийде протягом хвилини-двох'); } }, 'Перевірити')));
 }
 
+
+/* =====================================================================
+   ЗНАЙОМСТВО: один раз при першому вході нового учасника (кроки: вітання, урок, нагадування, застосунок і озвучка).
+   Повторно — з «Довідки». Позначка S.news.onb синхронізується між пристроями.
+   ===================================================================== */
+let INSTALL_EVT = null, ONB = null;
+const isStandalone = () => (window.matchMedia && matchMedia('(display-mode: standalone)').matches) || navigator.standalone === true;
+window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); INSTALL_EVT = e; if (ONB) ONB.draw(); else if (PROFILE && ROUTE === 'more' && $('#player').hidden) render(); });
+window.addEventListener('appinstalled', () => { INSTALL_EVT = null; track('onb', { a: 'installed' }); if (ONB) ONB.draw(); });
+function installApp(after) {
+  const ev = INSTALL_EVT; if (!ev) return; INSTALL_EVT = null;
+  try { ev.prompt(); ev.userChoice.then(c => { track('onb', { a: 'install', ok: c && c.outcome === 'accepted' ? 1 : 0 }); if (after) after(); }).catch(() => { if (after) after(); }); } catch (e) { if (after) after(); }
+}
+const onbNeeded = () => CLOUD && S && !(S.news && S.news.onb) && !Object.keys(S.sessions || {}).length && !Object.keys(S.done || {}).length && !Object.keys(S.cards || {}).length;
+function onboarding(again) {
+  if (ONB) return;
+  closeDialog();
+  const steps = ['hello', 'focus', 'notif', 'app'];
+  let i = 0, pick = !again && onCourse() ? courseNum() : focusNum(), other = false;
+  const ov = h('div', { id: 'onb', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'onb-h' });
+  const box = h('div', { class: 'onb-box' }); ov.append(box);
+  document.body.append(ov); document.body.classList.add('onb-open');
+  track('onb', { a: again ? 'again' : 'start' });
+  const keys = e => { if (e.key === 'Escape' && !$('#dlg')) { e.preventDefault(); close('skip'); } };
+  document.addEventListener('keydown', keys);
+  function close(how) {
+    track('onb', { a: again ? 'again_' + how : how, s: i + 1 });
+    if (!(S.news && S.news.onb)) { S.news = Object.assign({}, S.news, { onb: today() }); save(); }
+    document.removeEventListener('keydown', keys);
+    ov.remove(); ONB = null; document.body.classList.remove('onb-open');
+    if ($('#player').hidden) render();
+  }
+  const li = (ic, t, d) => h('li', null, h('span', { class: 'ico g', html: I[ic] }), h('div', null, h('b', null, t), h('div', { class: 'small muted' }, d)));
+  const ok = (t, d) => h('div', { class: 'onb-ok' }, h('b', null, '✓ ' + t), d ? h('div', { class: 'small muted' }, d) : null);
+  function draw() {
+    const step = steps[i], primary = [];
+    const nav = (label, fn) => { const b = h('button', { class: 'btn', onclick: fn || (() => { i++; draw(); }) }, label); primary.push(b);
+      return h('div', { class: 'onb-nav' }, i ? h('button', { class: 'btn ghost', onclick: () => { i--; draw(); } }, 'Назад') : h('span'), b); };
+    let c = [];
+    if (step === 'hello') c = [
+      h('div', { class: 'onb-emoji', 'aria-hidden': 'true' }, '👋'),
+      h('h2', { id: 'onb-h' }, 'Вітаю, ' + (NAMES[PROFILE] || '') + '!'),
+      h('p', { class: 'muted' }, 'Це тренажер словацької для нашого курсу. Коротко, як усе працює:'),
+      h('ul', { class: 'onb-list' },
+        li('home', 'Щодня — «Сесія на сьогодні»', '20–30 хвилин: картки, граматика й лексика твого уроку. Можна перервати й продовжити.'),
+        li('redo', 'Помилки не губляться', 'Вони повертаються, поки не відповіси правильно.'),
+        li('chat', 'Натисни на слово', 'Будь-яке словацьке слово в завданні — і побачиш переклад.'),
+        li('cards', 'Усе зберігається', 'В акаунті Google: на телефоні й комп\'ютері той самий прогрес.')),
+      nav('Далі')];
+    else if (step === 'focus') {
+      const opts = [];
+      if (onCourse() && courseNum() > 1) opts.push([courseNum(), 'Урок ' + courseNum(), 'Там зараз курс — вчитимешся разом із групою']);
+      opts.push([1, 'Урок 1', 'З самого початку: повториш усе по черзі']);
+      const isOther = other || !opts.some(o => o[0] === pick);
+      const grid = h('div', { class: 'numgrid', hidden: !isOther }, Array.from({ length: 35 }, (_, n) => n + 1).map(n => h('button', { class: n === pick ? 'on' : '', 'aria-pressed': n === pick ? 'true' : 'false', onclick: () => { pick = n; other = true; draw(); } }, n)));
+      const opt = (v, t, d) => h('button', { class: 'onb-opt' + (v === 'other' ? (isOther ? ' on' : '') : (!isOther && pick === v ? ' on' : '')), role: 'radio', 'aria-checked': (v === 'other' ? isOther : !isOther && pick === v) ? 'true' : 'false', onclick: () => { if (v === 'other') { other = true; } else { other = false; pick = v; } draw(); } }, h('b', null, t), h('span', { class: 'small muted' }, d));
+      c = [h('h2', { id: 'onb-h' }, 'З якого уроку почнеш?'),
+        h('p', { class: 'muted' }, '«Сесія на сьогодні» даватиме граматику й лексику з цього уроку. Інші уроки завжди відкриті в «Уроках», а змінити вибір можна будь-коли.'),
+        h('div', { class: 'onb-opts', role: 'radiogroup', 'aria-label': 'Урок' }, opts.map(o => opt(...o)), opt('other', isOther ? 'Інший урок: ' + pick : 'Інший урок', 'Вибрати номер')), grid,
+        nav('Далі', () => { if (S.focus !== pick) { S.focus = pick; if (savedSession('today')) dropSession('today'); save(); } track('onb', { a: 'focus', n: pick }); i++; draw(); })];
+    } else if (step === 'notif') {
+      const sup = pushSupported(), here = !!(NT.devices && NT.devices[DEV]), denied = sup && Notification.permission === 'denied';
+      const ios = /iPhone|iPad|iPod/.test(navigator.userAgent);
+      const what = 'Щоденне нагадування о ' + NT.daily + (onCourse() && NT.cls ? ', про заняття — за ' + NT.cls + ' хв' : '') + '.';
+      let st;
+      if (!sup) st = h('div', { class: 'note small' }, ios ? 'На iPhone сповіщення поки не працюють — ми це доробляємо. Решта платформи працює повністю.' : 'Цей браузер не підтримує сповіщення. У Chrome вони працюють.');
+      else if (here) st = ok('Сповіщення увімкнено на цьому пристрої', what + ' Змінити — «Ще» → «Сповіщення».');
+      else if (denied) st = h('div', { class: 'note small' }, 'Браузер заблокував сповіщення для цього сайту. Дозволь їх: значок біля адреси → Сповіщення → Дозволити. Потім «Ще» → «Сповіщення» → «Увімкнути тут».');
+      else { const b = h('button', { class: 'btn wide', onclick: async () => { b.disabled = true; b.textContent = 'Вмикаю…'; await ntEnableHere(); track('onb', { a: 'notif', ok: NT.devices && NT.devices[DEV] ? 1 : 0 }); if (ONB) draw(); } }, 'Увімкнути сповіщення'); st = h('div', { class: 'col', style: 'gap:6px' }, b, h('span', { class: 'tiny muted', style: 'text-align:center' }, 'Браузер спитає дозвіл — натисни «Дозволити». ' + what)); }
+      c = [h('div', { class: 'onb-emoji', 'aria-hidden': 'true' }, '🔔'), h('h2', { id: 'onb-h' }, 'Нагадування'),
+        h('p', { class: 'muted' }, 'Платформа може нагадати про щоденну сесію' + (onCourse() ? ' і про заняття' : '') + '. Лише це, нічого зайвого. Якщо сесію вже пройдено, нагадування не прийде.'),
+        st, nav(here || !sup || denied ? 'Далі' : 'Пізніше')];
+    } else {
+      const ios = /iPhone|iPad|iPod/.test(navigator.userAgent), andr = /Android/.test(navigator.userAgent);
+      let app;
+      if (isStandalone()) app = ok('Ти вже відкрив платформу як застосунок');
+      else if (INSTALL_EVT) app = h('div', { class: 'col', style: 'gap:8px' }, h('p', { class: 'small' }, 'Окрема іконка, весь екран і надійніші сповіщення.'), h('button', { class: 'btn ghost', onclick: () => installApp(() => { if (ONB) draw(); }) }, 'Встановити застосунок'));
+      else app = h('p', { class: 'small' }, ios ? 'У Safari: «Поділитися» → «На екран «Додому»».' : andr ? 'У Chrome: меню ⋮ → «Додати на головний екран» або «Встановити застосунок».' : 'У Chrome чи Edge: значок встановлення праворуч в адресному рядку.');
+      let voice;
+      if (SK_VOICE) voice = h('div', { class: 'col', style: 'gap:8px' }, ok('Словацька озвучка є', 'Голос: ' + SK_VOICE.name + '. Кнопка динаміка озвучує слова й речення.'), h('button', { class: 'btn ghost small', style: 'align-self:flex-start', onclick: () => { if (!say('Ahoj! Vitaj na kurze slovenčiny.')) toast('Озвучку вимкнено в «Ще»'); } }, h('span', { class: 'row', style: 'gap:6px' }, icon('speak'), 'Послухати')));
+      else if (!VOICE_READY && 'speechSynthesis' in window) voice = h('p', { class: 'small muted' }, 'Перевіряю, чи є словацький голос…');
+      else voice = h('div', { class: 'col', style: 'gap:8px' }, h('div', { class: 'onb-no' }, h('b', null, 'На цьому пристрої немає словацького голосу'), h('div', { class: 'small muted' }, 'Без нього слова не озвучуватимуться. Встановити — 2 хвилини.')), h('button', { class: 'btn ghost small', style: 'align-self:flex-start', onclick: () => { close('done'); go('help-voice'); } }, 'Як встановити'));
+      c = [h('h2', { id: 'onb-h' }, 'Останнє: застосунок і озвучка'),
+        h('div', { class: 'onb-card' }, h('h3', null, 'Застосунок'), app),
+        h('div', { class: 'onb-card' }, h('h3', null, 'Словацька озвучка'), voice),
+        h('p', { class: 'small muted' }, 'Усе це є в «Довідці» — пункт меню зі знаком питання. Там же кнопка «Повідомити про проблему».'),
+        nav(again ? 'Готово' : 'Почати навчання', () => close('done'))];
+    }
+    const dots = h('div', { class: 'onb-dots', 'aria-label': 'Крок ' + (i + 1) + ' з ' + steps.length }, steps.map((_, k) => h('i', { class: k === i ? 'on' : k < i ? 'done' : '' })));
+    box.replaceChildren(h('div', { class: 'onb-top' }, dots, h('button', { class: 'link small', onclick: () => close('skip') }, again ? 'Закрити' : 'Пропустити')), h('div', { class: 'onb-body' }, ...c));
+    box.scrollTop = 0;
+    const f = primary[primary.length - 1]; if (f) setTimeout(() => { if (f.isConnected) f.focus({ preventScroll: true }); }, 30);
+  }
+  ONB = { draw };
+  draw();
+}
+
+/* =====================================================================
+   ПОВІДОМЛЕННЯ ПРО ПРОБЛЕМИ: прапорець у вправі, кнопка в «Довідці».
+   reports/{id}: текст + контекст (завдання, відповідь, версія, пристрій). Адмін бачить усі в «Аналітиці»
+   й позначає «розглянуто» з відповіддю; автор бачить відповідь у «Довідці» (крапка на пункті меню).
+   ===================================================================== */
+let REPORTS = [], MY_REPORTS = [], REP_WATCH = false, REP_INIT = { my: false, all: false }, HELP_FRESH = [];
+const REP_CAT = { ok: 'Моя відповідь правильна', task: 'Помилка в завданні', unclear: 'Незрозуміло, що робити', bug: 'Щось не працює', idea: 'Ідея чи побажання', other: 'Інше' };
+const repSeenGet = () => { try { return JSON.parse(localStorage.getItem('sk.repSeen') || '[]'); } catch (e) { return []; } };
+const repUnseen = () => { const s = repSeenGet(); return MY_REPORTS.filter(r => r.status === 'done' && !s.includes(r.id)); };
+function repMarkSeen() { try { localStorage.setItem('sk.repSeen', JSON.stringify(MY_REPORTS.filter(r => r.status === 'done').map(r => r.id).slice(0, 300))); } catch (e) { } }
+const repNew = () => REPORTS.filter(r => r.status !== 'done').length;
+function repWatch() {
+  if (REP_WATCH || !CLOUD || !UID || !window.Cloud || !window.Cloud.watchReports) return; REP_WATCH = true;
+  const redraw = () => { if (!$('#side')) return; renderNav(ROUTE.split('-')[0]); const a = $('#rep-box'); if (a) drawReports(a); const m = $('#my-reps'); if (m) drawMyReps(m); };
+  window.Cloud.watchReports(true, list => {
+    const before = repUnseen().length; MY_REPORTS = list.sort((a, b) => b.ts - a.ts);
+    if (REP_INIT.my && repUnseen().length > before) toast('Діма відповів на твоє повідомлення — див. «Довідку»');
+    REP_INIT.my = true; redraw();
+    /* відповідь прийшла, коли «Довідка» вже відкрита, — перемальовуємо, щоб розкрити розділ */
+    if (repUnseen().length && ROUTE.split('-')[0] === 'help' && $('#player').hidden && !$('#dlg') && !HELP_FRESH.length) render();
+  }, () => { });
+  if (isAdmin()) window.Cloud.watchReports(false, list => {
+    const was = repNew(); REPORTS = list.sort((a, b) => b.ts - a.ts);
+    if (REP_INIT.all && repNew() > was) toast('Нове повідомлення про проблему');
+    REP_INIT.all = true; redraw();
+  }, () => { });
+}
+/** контекст повідомлення: де людина, пристрій і (якщо з вправи) завдання та відповідь */
+function repCtx(it) {
+  const d = devInfo(), c = { r: it ? 'сесія' : ROUTE.split('-')[0], plat: d.plat, br: d.br, pwa: d.pwa, w: d.w, dev: DEV };
+  if (!it) return c;
+  const t = it.task || {};
+  const q = t.uk || t.sk || t.q || t.word || (it.card && [it.card.sk, it.card.uk].filter(Boolean).join(' — ')) || '';
+  Object.assign(c, { k: it.mkey || it.key || (t.sid ? 'sent:' + t.sid : ''), l: it.L ? it.L.id : '', y: t.t || it.type || '', ti: String(PL.label || PL.title || '').slice(0, 80), q: String(q).replace(/\*\*/g, '').slice(0, 300) });
+  if (it.answered) Object.assign(c, { st: it._st || '', u: String(it._user || '').slice(0, 300), exp: String(it._exp || '').slice(0, 300) });
+  Object.keys(c).forEach(k => { if (c[k] === '' || c[k] === undefined || c[k] === null) delete c[k]; });
+  return c;
+}
+function reportDialog(it) {
+  if (!CLOUD || !window.Cloud || !window.Cloud.sendReport) { toast('Повідомлення працюють лише з акаунтом'); return; }
+  const cats = it ? ['ok', 'task', 'unclear', 'other'] : ['bug', 'idea', 'other'];
+  let cat = '';
+  const chips = h('div', { class: 'row wrap', style: 'gap:6px', role: 'radiogroup', 'aria-label': 'Що сталося' }, cats.map(v => h('button', { class: 'chip', role: 'radio', 'aria-checked': 'false', 'data-v': v, onclick: () => { cat = cat === v ? '' : v; chips.querySelectorAll('.chip').forEach(c => { const on = c.dataset.v === cat; c.classList.toggle('on', on); c.setAttribute('aria-checked', on ? 'true' : 'false'); }); } }, REP_CAT[v])));
+  const ta = h('textarea', { class: 'txt', rows: 4, maxlength: 1500, placeholder: it ? 'Що саме не так? Наприклад: «мій переклад теж правильний, бо…»' : 'Що ти робив, що очікував і що сталося?', 'aria-label': 'Опис проблеми' });
+  const what = it ? h('div', { class: 'rep-ctx tiny' }, h('div', null, h('span', { class: 'muted' }, 'Завдання: '), h('span', null, repCtx(it).q || '—'))) : null;
+  dialog(it ? 'Проблема з цим завданням' : 'Повідомити про проблему', h('div', { class: 'col', style: 'gap:10px' }, what, chips, ta,
+    h('p', { class: 'tiny muted', style: 'margin:0' }, it ? 'Разом із повідомленням Діма побачить це завдання, твою відповідь, версію платформи й тип пристрою.' : 'Разом із повідомленням Діма побачить розділ, де ти зараз, версію платформи й тип пристрою.')),
+    [['Скасувати', () => { }, 'ghost'], ['Надіслати', () => {
+      const txt = ta.value.trim();
+      if (!txt && !cat) { toast('Вибери варіант або коротко опиши проблему'); ta.focus(); return false; }
+      sendReport(txt || REP_CAT[cat], Object.assign(repCtx(it), cat ? { cat } : {}));
+    }]]);
+}
+function sendReport(text, ctx) {
+  track('rep', { cat: ctx.cat, k: ctx.k });
+  let done = false;
+  window.Cloud.sendReport({ name: NAMES[PROFILE] || PROFILE, text: String(text).slice(0, 1500), ctx, v: APP_VERSION })
+    .then(() => { done = true; toast('Надіслано. Дякую!'); })
+    .catch(e => { done = true; toast('Не вдалося надіслати: ' + (e.code || e.message) + '. Спробуй ще раз пізніше.'); });
+  setTimeout(() => { if (!done) toast('Збережено. Надішлеться, щойно з\'явиться інтернет'); }, 5000);
+}
+/** «Довідка» → «Щось не працює?»: кнопка й твої повідомлення з відповідями */
+function contactBox() {
+  const list = h('div', { id: 'my-reps', class: 'col', style: 'gap:8px' }); drawMyReps(list);
+  return h('div', { class: 'col', style: 'gap:12px' }, h('button', { class: 'btn small', style: 'align-self:flex-start', onclick: () => reportDialog(null) }, h('span', { class: 'row', style: 'gap:8px' }, icon('flag'), 'Повідомити про проблему')), list);
+}
+function drawMyReps(box) {
+  if (!MY_REPORTS.length) { box.replaceChildren(); return; }
+  box.replaceChildren(h('h4', { style: 'margin:4px 0 0' }, 'Твої повідомлення'), ...MY_REPORTS.slice(0, 20).map(r => h('div', { class: 'rep mine' + (r.status === 'done' ? ' done' : '') + (HELP_FRESH.includes(r.id) ? ' fresh' : '') },
+    h('div', { class: 'spread wrap' }, h('span', { class: 'tiny muted' }, anWhen(r.ts)), r.status === 'done' ? h('span', { class: 'small yes' }, '✓ Розглянуто') : h('span', { class: 'small muted b' }, 'Надіслано, чекає')),
+    h('p', { class: 'rep-t' }, r.text),
+    r.reply ? h('div', { class: 'note small' }, h('b', null, 'Відповідь Діми: '), r.reply) : null)));
+}
+/** «Аналітика» (адмін): скринька повідомлень, оновлюється наживо без перемальовування сторінки */
+function repBox() { const box = h('div', { class: 'card', id: 'rep-box' }); drawReports(box); return box; }
+function drawReports(box) {
+  const ui = AN.ui || {}, showAll = !!ui.repAll;
+  const list = REPORTS.filter(r => showAll || r.status !== 'done');
+  const tab = (on, label, v) => h('button', { class: 'chip' + (on ? ' on' : ''), 'aria-pressed': on ? 'true' : 'false', onclick: () => { ui.repAll = v; AN.ui = ui; drawReports(box); } }, label);
+  box.replaceChildren(
+    h('div', { class: 'spread wrap', style: 'gap:8px' }, h('h3', null, 'Повідомлення про проблеми', repNew() ? h('span', { class: 'badge', style: 'margin-left:8px' }, repNew()) : null), h('div', { class: 'row', style: 'gap:6px' }, tab(!showAll, 'Нові', false), tab(showAll, 'Усі (' + REPORTS.length + ')', true))),
+    list.length ? h('div', { class: 'reps' }, list.slice(0, showAll ? 100 : 40).map(repItem))
+      : h('p', { class: 'small muted', style: 'margin:0' }, showAll ? 'Повідомлень ще не було.' : 'Нових немає. Учасники надсилають їх прапорцем у вправі або з «Довідки».'));
+}
+function repItem(r) {
+  const c = r.ctx || {}, t = c.k ? anTask(c.k) : null;
+  const dev = [AN_PLAT[c.plat] || c.plat, c.pwa ? 'застосунок' : AN_BR[c.br] || c.br, c.w ? c.w + ' px' : ''].filter(Boolean).join(' · ');
+  const ST = { ok: 'зараховано', almost: '«майже»', bad: 'не зараховано' };
+  const exp = c.exp || (t && t.ans) || '';
+  return h('div', { class: 'rep' + (r.status === 'done' ? ' done' : '') },
+    h('div', { class: 'spread wrap', style: 'gap:6px' }, h('span', null, h('b', null, r.name || r.email), h('span', { class: 'small muted' }, ' · ' + anWhen(r.ts))), c.cat ? h('span', { class: 'chip static small' }, REP_CAT[c.cat] || c.cat) : null),
+    h('p', { class: 'rep-t' }, r.text),
+    h('div', { class: 'rep-ctx tiny' },
+      c.q || c.k ? h('div', null, h('span', { class: 'muted' }, (t && t.where !== c.k ? t.where : c.ti || 'Завдання') + ': '), h('span', { lang: 'sk' }, c.q || (t && t.txt) || c.k)) : h('div', null, h('span', { class: 'muted' }, 'Де: '), anRoute(c.r)),
+      c.u ? h('div', null, h('span', { class: 'muted' }, 'Відповідь: '), h('b', { lang: 'sk' }, c.u), c.st ? ' (' + (ST[c.st] || c.st) + ')' : '') : null,
+      exp ? h('div', null, h('span', { class: 'muted' }, 'Очікувалось: '), h('span', { lang: 'sk' }, exp)) : null,
+      h('div', { class: 'muted' }, 'Версія ' + (r.v || '—') + (dev ? ' · ' + dev : ''), c.k ? h('span', null, ' · ', h('code', null, c.k)) : null)),
+    r.status === 'done' ? h('div', { class: 'small' }, h('span', { class: 'yes' }, '✓ Розглянуто' + (r.doneAt ? ' ' + anWhen(r.doneAt) : '')), r.reply ? h('div', null, h('span', { class: 'muted' }, 'Твоя відповідь: '), r.reply) : null) : null,
+    h('div', { class: 'row wrap', style: 'gap:6px' },
+      r.status !== 'done' ? h('button', { class: 'btn small', onclick: () => repAnswer(r) }, 'Розглянуто')
+        : h('button', { class: 'btn ghost small', onclick: () => window.Cloud.answerReport(r.id, 'new', r.reply || '').catch(repErr) }, 'Повернути в нові'),
+      h('button', { class: 'btn ghost small', onclick: () => dialog('Видалити повідомлення?', h('p', null, 'Воно зникне і в тебе, і в ' + (r.name || 'автора') + '.'), [['Скасувати', () => { }, 'ghost'], ['Видалити', () => { window.Cloud.deleteReport(r.id).catch(repErr); }, 'orange']]) }, 'Видалити')));
+}
+function repAnswer(r) {
+  const ta = h('textarea', { class: 'txt', rows: 3, maxlength: 1500, placeholder: 'Наприклад: «Дякую! Додав твій варіант, тепер приймається.»', 'aria-label': 'Відповідь' });
+  dialog('Позначити як розглянуте', h('div', { class: 'col', style: 'gap:8px' }, h('p', { class: 'small muted', style: 'margin:0' }, (r.name || 'Автор') + ' побачить це в «Довідці», а на пункті меню з\'явиться крапка. Відповідь — необов\'язково.'), ta),
+    [['Скасувати', () => { }, 'ghost'], ['Готово', () => { window.Cloud.answerReport(r.id, 'done', ta.value.trim()).then(() => toast('Позначено як розглянуте')).catch(repErr); }]]);
+}
+const repErr = e => toast('Не вдалося: ' + (e.code || e.message) + (e.code === 'permission-denied' ? ' — онови правила Firestore' : ''));
+
 /* ---------- перевірка формату уроку (той самий формат дає шаблон для безкоштовного чату) ---------- */
 function validateLesson(L) {
   const E = [];
@@ -2121,12 +2350,15 @@ function helpSections() {
     { id: 'data', t: 'Які дані збираються і навіщо', b: [
       '**Твій прогрес** — пройдені дні, картки, помилки, «Мої слова», налаштування. Він потрібен, щоб усе працювало однаково на всіх твоїх пристроях. Іншим учасникам видно лише твій вогник і календар активності.',
       '**Статистика використання** — її бачить **лише Діма**, щоб покращувати платформу. Що в ній:',
-      ['ul', 'які розділи ти відкриваєш і скільки часу займаєшся;', 'які сесії почав, закінчив чи кинув і на якому завданні;', 'чи правильна відповідь, скільки секунд ти думав, чи відкривав підказку чи шпаргалку;', '**текст відповіді — лише для неправильних і «Майже»**: так видно завдання, де перевірка надто сувора або підказка незрозуміла;', 'які слова ти натискаєш і що додаєш у «Мої слова»;', 'які кнопки натискаєш (без варіантів відповідей у вправах);', 'тип пристрою й браузера, версія платформи та збої, якщо вони трапились.'],
+      ['ul', 'які розділи ти відкриваєш і скільки часу займаєшся;', 'які сесії почав, закінчив чи кинув і на якому завданні;', 'чи правильна відповідь, скільки секунд ти думав, чи відкривав підказку чи шпаргалку;', '**текст відповіді — лише для неправильних і «Майже»**: так видно завдання, де перевірка надто сувора або підказка незрозуміла;', 'які слова ти натискаєш і що додаєш у «Мої слова»;', 'які кнопки натискаєш (без варіантів відповідей у вправах);', 'тип пристрою й браузера, чи є на ньому словацька озвучка, версія платформи та збої, якщо вони трапились.'],
+      '**Повідомлення про проблеми** — лише ті, що ти надсилаєш сам: текст, завдання й твоя відповідь (якщо надсилаєш із вправи), версія й тип пристрою. Бачить їх лише Діма.',
       '**Не збирається:** тексти правильних відповідей, паролі, контакти, місцезнаходження. Дані лежать у базі Firebase цього проєкту й нікому не передаються. Питання — до Діми.'] },
     { id: 'faq', t: 'Часті питання', b: [
-      ['ul', '**Відповідь правильна, а не зарахувало.** Перевір діакритику й одруківки. Якщо варіант справді правильний — «Мій варіант теж правильний».', '**Випадково натиснув «Мій варіант теж правильний».** Напиши Дімі, яке це було завдання, — він прибере варіант.', '**«Сьогодні» дає не той урок.** Головна → «Я вчу» → «змінити».', '**Не прийшло нагадування.** Див. розділ «Сповіщення»: «Тест», дозвіл у браузері, економія заряду.', '**Немає кнопки озвучки.** На пристрої немає словацького голосу — див. розділ «Словацька озвучка».', '**Не бачу прогрес на іншому пристрої.** Перевір, що це той самий акаунт Google, і подивись «Ще» → «Синхронізація».', '**Як вийти з акаунта.** «Ще» → «Профіль» → «Вийти».']] },
+      ['ul', '**Відповідь правильна, а не зарахувало.** Перевір діакритику й одруківки. Якщо варіант справді правильний — «Мій варіант теж правильний».', '**Випадково натиснув «Мій варіант теж правильний».** Повідом про це (розділ «Щось не працює?») і напиши, яке це було завдання, — Діма прибере варіант.', '**Знайшов помилку в завданні.** Прапорець угорі під час вправи → «Помилка в завданні».', '**«Сьогодні» дає не той урок.** Головна → «Я вчу» → «змінити».', '**Не прийшло нагадування.** Див. розділ «Сповіщення»: «Тест», дозвіл у браузері, економія заряду.', '**Немає кнопки озвучки.** На пристрої немає словацького голосу — див. розділ «Словацька озвучка».', '**Не бачу прогрес на іншому пристрої.** Перевір, що це той самий акаунт Google, і подивись «Ще» → «Синхронізація».', '**Як вийти з акаунта.** «Ще» → «Профіль» → «Вийти».']] },
     { id: 'contact', t: 'Щось не працює?', b: [
-      'Напиши Дімі: що ти робив, що очікував і що сталося. Скріншот дуже допомагає. Платформа ще й сама записує збої, тож часто Діма побачить проблему раніше.'] }
+      'Натисни **«Повідомити про проблему»** й опиши: що ти робив, що очікував і що сталося. Повідомлення бачить лише Діма. Платформа ще й сама записує збої, тож часто він побачить проблему раніше.',
+      'Якщо щось не так у **конкретному завданні**, краще натисни **прапорець** угорі під час вправи (або «Повідомити про проблему» під неправильною відповіддю): тоді Діма одразу побачить саме це завдання й твою відповідь.',
+      CLOUD ? ['el', contactBox()] : null] }
   ].filter(Boolean);
 }
 function helpBlock(b) {
@@ -2134,10 +2366,16 @@ function helpBlock(b) {
   if (typeof b === 'string') return h('p', null, rich(b));
   if (b[0] === 'ul') return h('ul', null, b.slice(1).filter(Boolean).map(x => h('li', null, rich(x))));
   if (b[0] === 'note') return h('div', { class: 'note small' }, rich(b[1]));
-  if (b[0] === 'el') return b[1];
+  if (b[0] === 'el') return b[1] || null;
   return null;
 }
 VIEWS.help = (main, open) => {
+  /* є відповідь Діми на твоє повідомлення — одразу відкриваємо розділ і гасимо крапку */
+  const fresh = repUnseen().map(r => r.id);
+  if (!open && fresh.length) open = 'contact';
+  if (open === 'contact' && fresh.length) setTimeout(() => { const el = $('#help-contact .rep.fresh'); if (el) el.scrollIntoView({ block: 'center' }); }, 60);
+  if (fresh.length) setTimeout(() => { repMarkSeen(); renderNav('help'); }, 1200);
+  HELP_FRESH = fresh;
   const secs = helpSections();
   const plain = x => String(x || '').replace(/\*\*/g, '').toLowerCase();
   const items = secs.map(sec => {
@@ -2145,7 +2383,7 @@ VIEWS.help = (main, open) => {
     const det = h('details', { class: 'hsec', id: 'help-' + sec.id, open: open === sec.id ? true : null }, h('summary', null, h('span', null, sec.t), icon('back')), h('div', { class: 'hbody' }, sec.b.map(helpBlock)));
     return { sec, text, det };
   });
-  const none = h('p', { class: 'muted', hidden: true }, 'Нічого не знайдено. Спробуй інше слово або напиши Дімі.');
+  const none = h('p', { class: 'muted', hidden: true }, 'Нічого не знайдено. Спробуй інше слово або повідом про проблему в розділі «Щось не працює?».');
   const q = h('input', { class: 'txt', type: 'search', placeholder: 'Пошук: наприклад, вібрація, діакритика, картки', 'aria-label': 'Пошук у довідці', autocomplete: 'off' });
   q.addEventListener('input', () => {
     /* шукаємо за основою: «вібрація» знайде «вібрацію», «картки» — «карток» */
@@ -2154,14 +2392,14 @@ VIEWS.help = (main, open) => {
     none.hidden = n > 0;
   });
   main.append(h('div', { class: 'stack', style: 'max-width:760px' }, h('h1', null, 'Довідка'),
-    h('p', { class: 'muted', style: 'margin-top:-6px' }, 'Як усе влаштовано і що робити, якщо щось не так.'), q, none,
+    h('div', { class: 'spread wrap', style: 'margin-top:-6px;gap:8px' }, h('p', { class: 'muted', style: 'margin:0' }, 'Як усе влаштовано і що робити, якщо щось не так.'), CLOUD ? h('button', { class: 'link small b', onclick: () => onboarding(true) }, 'Показати знайомство ще раз') : null), q, none,
     h('div', { class: 'helplist' }, items.map(it => it.det)),
     h('p', { class: 'tiny muted' }, 'Версія ' + (CLOUD ? APP_VERSION : 'пілот') + '.')));
   if (open) setTimeout(() => { const el = document.getElementById('help-' + open); if (el) el.scrollIntoView({ block: 'start' }); }, 30);
 };
 
 /* ---------- сторінка «Аналітика» (лише адмін) ---------- */
-const AN_ROUTES = { today: 'Сьогодні', lessons: 'Уроки', lesson: 'Урок', cards: 'Картки', cheats: 'Шпаргалки', cheat: 'Шпаргалка', sent: 'Тренажер речень', trainer: 'Тренажер форм', det: 'Визначник', mistakes: 'Помилки', reading: 'Читання', read: 'Текст уроку', texts: 'Мої тексти', text: 'Мій текст', phrases: 'Фрази', eslovak: 'e-slovak', add: 'Додати урок', howto: 'Як додати урок', people: 'Учасники', analytics: 'Аналітика', more: 'Ще', 'сесія': 'У сесії' };
+const AN_ROUTES = { today: 'Сьогодні', lessons: 'Уроки', lesson: 'Урок', cards: 'Картки', cheats: 'Шпаргалки', cheat: 'Шпаргалка', sent: 'Тренажер речень', trainer: 'Тренажер форм', det: 'Визначник', mistakes: 'Помилки', reading: 'Читання', read: 'Текст уроку', texts: 'Мої тексти', text: 'Мій текст', phrases: 'Фрази', eslovak: 'e-slovak', help: 'Довідка', add: 'Додати урок', howto: 'Як додати урок', people: 'Учасники', analytics: 'Аналітика', more: 'Ще', 'сесія': 'У сесії' };
 const AN_EV = { tap: 'Переклад слова по дотику', myc: '«+ в картки»', fxg: '«Виправити» переклад', own: '«Мій варіант теж правильний»', hint: 'Відкрив підказку до відповіді', cheat: 'Відкрив шпаргалку', fl: 'Картки (відповідей)' };
 const anDayL = ds => { const dt = new Date(+ds.slice(0, 4), +ds.slice(5, 7) - 1, +ds.slice(8, 10)); return UA_DAYS[dt.getDay()] + ' ' + dt.getDate() + '.' + ds.slice(5, 7); };
 const AN_TYPES = { choice: 'Вибір варіанта', input: 'Вписати слово', build: 'Скласти речення', tr: 'Переклад', dict: 'Диктант', match: 'Пари слів', det: 'Визначник', speak: 'Прочитай уголос', flash: 'Картки', learn: 'Нові слова', read: 'Питання до тексту' };
@@ -2231,6 +2469,8 @@ function anAgg(docs, days, who) {
 const anTable = (head, rows, cls) => rows.length ? h('div', { class: 'tablewrap' }, h('table', { class: 'atable' + (cls ? ' ' + cls : '') }, h('thead', null, h('tr', null, head.map(x => h('th', null, x)))), h('tbody', null, rows.map(r => h('tr', null, r.map(c => h('td', null, c))))))) : h('p', { class: 'small muted' }, 'Поки немає даних за цей період.');
 const anWhen = t => { if (!t) return '—'; const d = new Date(t), ds = dstr(d); return (ds === today() ? 'сьогодні' : ds === addDays(today(), -1) ? 'вчора' : anDayL(ds)) + ' ' + hm(d); };
 const pct = (a, b) => b ? Math.round(100 * a / b) + '%' : '—';
+const AN_PLAT = { android: 'Android', ios: 'iPhone/iPad', windows: 'Windows', mac: 'Mac', linux: 'Linux' }, AN_BR = { chrome: 'Chrome', edge: 'Edge', firefox: 'Firefox', safari: 'Safari', opera: 'Opera' };
+const anDev = o => [AN_PLAT[o.plat] || o.plat || '?', o.pwa ? 'застосунок' : AN_BR[o.br] || o.br].filter(Boolean).join(' · ');
 /** стовпчики «хвилини по днях»: один колір, підказка при наведенні/фокусі з розкладом по людях */
 function anBars(dayList, U) {
   /* до 60 днів — стовпчик на день; більше — на тиждень (з понеділка) */
@@ -2262,7 +2502,7 @@ VIEWS.analytics = main => {
   const chip = (v, l) => h('button', { class: 'chip' + (ui.days === v ? ' on' : ''), 'aria-pressed': ui.days === v ? 'true' : 'false', onclick: () => { ui.days = v; render(); } }, l);
   const whoSel = h('select', { class: 'txt', style: 'max-width:200px;min-height:40px', 'aria-label': 'Чиї дані' }, h('option', { value: 'all' }, 'Усі'), Object.keys(NAMES).map(k => h('option', { value: k, selected: ui.who === k }, NAMES[k])));
   whoSel.addEventListener('change', () => { ui.who = whoSel.value; render(); });
-  main.append(h('div', { class: 'stack', style: 'max-width:1100px' }, h('h1', null, 'Аналітика'),
+  main.append(h('div', { class: 'stack', style: 'max-width:1100px' }, h('h1', null, 'Аналітика'), repBox(),
     h('div', { class: 'row wrap filters', style: 'gap:8px;align-items:center' }, chip(7, '7 днів'), chip(14, '14 днів'), chip(30, '30 днів'), chip('all', 'За весь час'), whoSel,
       h('button', { class: 'btn ghost small', onclick: () => { AN.cache = null; render(); } }, 'Оновити'),
       h('button', { class: 'btn ghost small', onclick: () => { const blob = new Blob([JSON.stringify((AN.cache && AN.cache.docs) || [], null, 1)], { type: 'application/json' }); const a = h('a', { href: URL.createObjectURL(blob), download: 'analytics-' + today() + '.json' }); document.body.append(a); a.click(); a.remove(); } }, 'Завантажити дані (JSON)')),
@@ -2292,6 +2532,9 @@ VIEWS.analytics = main => {
     const featRows = Object.keys(AN_EV).map(e => [AN_EV[e], ...users.map(u => u.ev.filter(x => x.e === e).length || '·')]);
     featRows.push(['Тренажер форм (сесій)', ...users.map(u => u.ev.filter(x => x.e === 'ss' && /Тренажер форм/.test(x.k || '')).length || '·')]);
     featRows.push(['Тренажер речень (сесій)', ...users.map(u => u.ev.filter(x => x.e === 'ss' && /^sent:/.test(x.k || '')).length || '·')]);
+    featRows.push(['Знайомство: пройшов до кінця', ...users.map(u => u.ev.filter(x => x.e === 'onb' && x.a === 'done').length || '·')]);
+    featRows.push(['Знайомство: пропустив', ...users.map(u => u.ev.filter(x => x.e === 'onb' && x.a === 'skip').map(x => 'на кроці ' + (x.s || '?')).join(', ') || '·')]);
+    featRows.push(['Повідомив про проблему', ...users.map(u => u.ev.filter(x => x.e === 'rep').length || '·')]);
     featRows.push(['Розминка (сесій)', ...users.map(u => u.ev.filter(x => x.e === 'ss' && /Розминк/i.test(x.k || '')).length || '·')]);
     /* слова */
     const cnt = (arr, f) => { const m = {}; arr.forEach(x => { const k = f(x); if (k) m[k] = (m[k] || 0) + 1; }); return Object.entries(m).sort((a, b) => b[1] - a[1]); };
@@ -2304,12 +2547,25 @@ VIEWS.analytics = main => {
     const clicks = cnt(ev('click'), x => anRoute(x.r) + ' → ' + x.l).slice(0, 25);
     const errs = {}; ev('err').forEach(x => { const k = x.m + ' @ ' + (x.s || ''); const o = errs[k] = errs[k] || { n: 0, who: new Set(), v: '', t: 0 }; o.n++; o.who.add(NAMES[x.who] || x.who); if (x.t > o.t) { o.t = x.t; o.v = x.v || ''; } });
     const sec = (title, note, ...kids) => h('div', { class: 'card' }, h('h3', null, title), note ? h('p', { class: 'small muted', style: 'margin-top:-4px' }, note) : null, ...kids);
+    /* пристрої й озвучка: останній стан кожного пристрою (id пристрою з 3.8; старі — за платформою й браузером) */
+    const devs = {};
+    all.filter(x => x.e === 'open' || x.e === 'tts').forEach(x => {
+      const key = x.who + '|' + (x.d || [x.plat, x.br, x.pwa ? 1 : 0].join('/'));
+      const o = devs[key] = devs[key] || { who: x.who, legacy: !x.d, t: 0, tts: null };
+      if (x.t >= o.t) { o.t = x.t; if (x.plat) Object.assign(o, { plat: x.plat, br: x.br, pwa: x.pwa }); }
+      if (x.e === 'tts' && (!o.tts || x.t >= o.tts.t)) o.tts = x;
+    });
+    Object.entries(devs).forEach(([k, o]) => { if (o.legacy && Object.values(devs).some(y => !y.legacy && y.who === o.who && y.plat === o.plat && y.br === o.br && !!y.pwa === !!o.pwa)) delete devs[k]; });
+    const devRows = Object.values(devs).sort((a, b) => ((a.tts ? (a.tts.ok ? 2 : 0) : 1) - (b.tts ? (b.tts.ok ? 2 : 0) : 1)) || String(NAMES[a.who] || a.who).localeCompare(NAMES[b.who] || b.who) || b.t - a.t);
+    const noVoice = devRows.filter(o => o.tts && !o.tts.ok);
     body.replaceChildren(
       h('div', { class: 'stats' }, tile(activeToday, 'активні сьогодні'), tile(users.filter(u => u.days).length, ui.days === 'all' ? 'активні за весь час' : 'активні за ' + ui.days + ' дн.', ui.days === 'all' ? 'з ' + anDayL(first) : null), tile(users.reduce((a, u) => a + u.mins, 0), 'хвилин навчання'),
         tile(se.length + ' / ' + ss.length, 'сесій завершено / почато'), tile(pct(okAll, ans.length), 'правильних відповідей', ans.length + ' відповідей')),
       sec(dayList.length > 60 ? 'Хвилини навчання по тижнях' : 'Хвилини навчання по днях', 'Лише час за завданнями: поки відкрита сесія, картки чи тренажер. Паузи понад 5 хвилин і інші сторінки не рахуються. Наведи на стовпчик, щоб побачити, хто скільки.', anBars(dayList, U)),
       sec('Люди', 'Вогник і «сесія на сьогодні» — з прогресу; решта — за обраний період.', anTable(['Хто', 'Роль', 'Остання дія', 'Днів', 'Хв', 'Сесій', 'Кинуто', 'Відповідей', 'Точність', 'Вогник', 'Сьогодні', 'Пристрій', 'Версія'],
         users.map(u => { const st = stateOf(u.key); const o = u.open || {}; return [h('b', null, u.name), ROLE_UA[roleOf(u.key)] || '—', anWhen(u.last), u.days, u.mins, u.se + ' / ' + u.ss, u.sx || '·', u.ans, pct(u.ok, u.ans), st ? streakOf(st) : '—', st && st.daily && st.daily[today()] ? '✓ пройдена' : '—', o.plat ? o.plat + (o.pwa ? ', застосунок' : ', ' + o.br) : '—', u.v || '—']; }))),
+      sec('Пристрої й словацька озвучка', noVoice.length ? 'Без озвучки: ' + noVoice.map(o => (NAMES[o.who] || o.who) + ' (' + anDev(o) + ')').join(', ') + '. Можна надіслати їм розділ довідки «Словацька озвучка».' : 'Стан перевіряється при кожному запуску. «Ще не відомо» — пристрій ще не відкривав версію 3.8.',
+        anTable(['Хто', 'Пристрій', 'Словацька озвучка', 'Востаннє'], devRows.map(o => [h('b', null, NAMES[o.who] || o.who), anDev(o), !o.tts ? h('span', { class: 'muted' }, 'ще не відомо') : o.tts.ok ? h('span', { class: 'yes' }, '✓ є' + (o.tts.vn ? ' — ' + o.tts.vn : '')) : h('span', { class: 'no' }, '✗ немає'), anWhen(o.t)]))),
       sec('Сесії', 'Скільки почали, закінчили й кинули. «Де кидають» — середня позиція виходу.', anTable(['Тип', 'Почато', 'Завершено', 'Кинуто', 'Де кидають'],
         Object.entries(kinds).sort((a, b) => b[1].st - a[1].st).map(([k, o]) => [k, o.st, o.fin, o.ex || '·', o.pos.length ? 'на ~' + Math.round(o.pos.reduce((a, b) => a + b, 0) / o.pos.length) + '%' : '—']))),
       sec('Найважчі завдання', 'Найвищий відсоток помилок (мінімум ' + minN + ' спроби). Кандидати на виправлення або кращу підказку.', anTable(['Де', 'Завдання', 'Правильно', 'Спроб', 'Помилок', 'Як помилялись'],
@@ -2619,13 +2875,17 @@ async function cloudBoot() {
       if (JSON.stringify([NAMES, ROLES, ACC.course]) !== before && $('#player').hidden) render();
     }, () => { });
     ungate(); render();
-    track('open', Object.assign(devInfo(), { role: roleOf(PROFILE) }));
-    ntLoad().then(() => { if (ROUTE === 'more') render(); });
+    track('open', Object.assign(devInfo(), { role: roleOf(PROFILE), d: DEV })); ttsReport();
+    const ntP = ntLoad().then(() => { if (ROUTE === 'more') render(); });
+    repWatch();
+    /* знайомство для нового учасника: один раз, коли ще немає жодного прогресу */
+    if (remoteOk && onbNeeded()) Promise.race([ntP, new Promise(r => setTimeout(r, 2500))]).then(() => { if (onbNeeded() && $('#player').hidden) onboarding(); });
     slotPull(true);
   });
 }
 async function boot() {
   $('#pl-close').addEventListener('click', askExit);
+  $('#pl-report').addEventListener('click', () => reportDialog(PL.cur));
   $('#pl-scrim').addEventListener('click', closeCheat);
   window.addEventListener('hashchange', () => { if ($('#player').hidden && PROFILE) render(); });
   if (CLOUD) return cloudBoot();

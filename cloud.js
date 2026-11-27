@@ -1,7 +1,7 @@
 /* Шар Firebase: вхід через Google і Firestore. Офіційний SDK з gstatic, версія зафіксована. */
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.18.0/firebase-app.js';
 import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/12.18.0/firebase-auth.js';
-import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, doc, getDoc, setDoc, updateDoc, getDocs, arrayUnion, query, where, collection, onSnapshot, serverTimestamp } from 'https://www.gstatic.com/firebasejs/12.18.0/firebase-firestore.js';
+import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, doc, getDoc, setDoc, updateDoc, addDoc, deleteDoc, getDocs, arrayUnion, query, where, collection, onSnapshot, serverTimestamp } from 'https://www.gstatic.com/firebasejs/12.18.0/firebase-firestore.js';
 
 const firebaseConfig = {
   apiKey: 'AIzaSyDdKFk4dMekeIxn59bt_e3cOIUR9R6SxxE',
@@ -56,6 +56,19 @@ window.Cloud = {
   },
   /** лише адмін: усі події з дня from (YYYY-MM-DD) включно */
   async loadEvents(from) { const snap = await getDocs(query(collection(db, 'events'), where('day', '>=', from))); return snap.docs.map(d => d.data()); },
+  /** повідомлення про проблему: кожен створює своє; читає свої, адмін — усі */
+  sendReport(r) {
+    return addDoc(collection(db, 'reports'), { uid: auth.currentUser.uid, email: auth.currentUser.email, name: r.name, text: r.text, ctx: r.ctx, v: r.v, status: 'new', ts: serverTimestamp() });
+  },
+  /** mine=true — лише свої (для учасника), false — усі (лише адмін). cb отримує список з ts/doneAt у мілісекундах */
+  watchReports(mine, cb, onErr) {
+    const q = mine ? query(collection(db, 'reports'), where('uid', '==', auth.currentUser.uid)) : collection(db, 'reports');
+    const ms = t => (t && t.toMillis ? t.toMillis() : Date.now());
+    return onSnapshot(q, snap => cb(snap.docs.map(d => { const x = d.data(); return Object.assign({}, x, { id: d.id, ts: ms(x.ts), doneAt: x.doneAt ? ms(x.doneAt) : 0 }); })), onErr);
+  },
+  /** лише адмін: статус (new | done) і відповідь автору */
+  answerReport(id, status, reply) { return updateDoc(doc(db, 'reports', id), { status, reply: reply || '', doneAt: serverTimestamp() }); },
+  deleteReport(id) { return deleteDoc(doc(db, 'reports', id)); },
   watchAccess(cb, onErr) { return onSnapshot(accRef(), s => cb(s.exists() ? accFrom(s.data()) : null), onErr); },
   onUser(cb) { return onAuthStateChanged(auth, cb); },
   signIn() { const p = new GoogleAuthProvider(); p.setCustomParameters({ prompt: 'select_account' }); return signInWithPopup(auth, p); },

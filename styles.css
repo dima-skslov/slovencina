@@ -409,3 +409,45 @@ textarea.answer{height:auto;resize:vertical;min-height:62px;line-height:1.4;padd
 .qlink svg{width:17px;height:17px}
 .qlink:hover{color:var(--green-t)}
 .tts-row a.small{text-decoration:underline;color:var(--green-t)}
+/* v3.8: знайомство при першому вході */
+body.onb-open{overflow:hidden}
+#onb{position:fixed;inset:0;z-index:70;background:var(--scrim);display:flex;align-items:center;justify-content:center;padding:18px}
+.onb-box{background:var(--card);border-radius:24px;width:100%;max-width:520px;max-height:calc(100vh - 36px);max-height:calc(100dvh - 36px);overflow:auto;padding:18px 22px 22px;box-shadow:0 20px 60px rgba(0,0,0,.25)}
+.onb-top{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:6px}
+.onb-dots{display:flex;gap:6px}
+.onb-dots i{width:8px;height:8px;border-radius:4px;background:var(--line);transition:width .2s}
+.onb-dots i.done{background:var(--green);opacity:.4}
+.onb-dots i.on{width:22px;background:var(--green)}
+.onb-body{display:flex;flex-direction:column;gap:14px}
+.onb-body h2{margin:0;font-size:26px}
+.onb-body p{margin:0}
+.onb-emoji{font-size:40px;line-height:1}
+.onb-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:12px}
+.onb-list li{display:flex;gap:12px;align-items:flex-start}
+.onb-list .ico{flex:none}
+.onb-opts{display:flex;flex-direction:column;gap:8px}
+.onb-opt{display:flex;flex-direction:column;align-items:flex-start;gap:2px;text-align:left;padding:12px 14px;border:2px solid var(--line);border-radius:16px;background:var(--card);cursor:pointer;font:inherit;color:inherit}
+.onb-opt:hover{border-color:var(--ok-b)}
+.onb-opt.on{border-color:var(--green);background:var(--green-xl)}
+.onb-card{border:2px solid var(--line);border-radius:16px;padding:12px 14px;display:flex;flex-direction:column;gap:8px}
+.onb-card h3{margin:0;font-size:16px}
+.onb-card p{margin:0}
+.onb-ok b{color:var(--green-t)}
+.onb-no b{color:var(--orange-ink)}
+.onb-nav{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:4px}
+.onb-nav .btn:last-child{min-width:150px}
+@media (max-width:520px){#onb{padding:0;align-items:stretch}.onb-box{max-width:none;max-height:none;border-radius:0;padding:14px 18px calc(18px + env(safe-area-inset-bottom));display:flex;flex-direction:column}.onb-body{flex:1}.onb-nav{margin-top:auto;padding-top:8px}.onb-body h2{font-size:24px}}
+/* v3.8: повідомлення про проблеми й озвучка в аналітиці */
+.yes{color:var(--green-t);font-weight:800}
+.no{color:var(--orange-ink);font-weight:800}
+.replink{display:inline-flex;align-items:center;gap:5px;margin-top:6px;color:inherit;opacity:.85}
+.replink svg{width:14px;height:14px}
+.reps{display:flex;flex-direction:column;gap:10px;margin-top:10px}
+.rep{border:2px solid var(--line);border-radius:14px;padding:10px 12px;display:flex;flex-direction:column;gap:6px}
+.rep.done{opacity:.7}
+.rep.fresh{border-color:var(--orange);opacity:1}
+.rep-t{margin:0;white-space:pre-wrap;overflow-wrap:anywhere}
+.rep-ctx{background:var(--surface);border-radius:10px;padding:8px 10px;display:flex;flex-direction:column;gap:3px;overflow-wrap:anywhere}
+.chip.static{cursor:default}
+#pl-report{color:var(--muted)}
+#pl-report:hover{color:var(--orange-ink)}
