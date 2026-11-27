@@ -35,7 +35,7 @@ const V_TOPICS = { 1: 'Абетка, вимова, знайомство', 2: 'М
 const DIA = ['á', 'ä', 'č', 'ď', 'é', 'í', 'ĺ', 'ľ', 'ň', 'ó', 'ô', 'ŕ', 'š', 'ť', 'ú', 'ý', 'ž'];
 const SRS_IV = [0, 1, 2, 4, 8, 16, 32];
 const DAILY_CARDS = 15; // карток у сесії на сьогодні
-const APP_VERSION = '3.6 (28.11)';
+const APP_VERSION = '3.7 (28.11)';
 
 /* ---------- іконки (власні константи) ---------- */
 const I = {
@@ -399,7 +399,8 @@ const navItems = () => NAV.filter(([r]) => (r !== 'add' || canEdit() || !CLOUD) 
 /** службові пункти — внизу бічного меню, окремо від навчальних */
 const NAV_TAIL = ['people', 'analytics', 'help', 'more'];
 function renderNav(cur) {
-  const navLink = ([r, label, ic]) => h('a', { class: 'nav' + (active === r ? ' on' : ''), href: '#' + r }, icon(ic), label, r === 'mistakes' && mistakeCount() ? h('span', { class: 'badge' }, mistakeCount()) : null);
+  const dot = ttsDot();
+  const navLink = ([r, label, ic]) => h('a', { class: 'nav' + (active === r ? ' on' : ''), href: '#' + r }, icon(ic), label, r === 'mistakes' && mistakeCount() ? h('span', { class: 'badge' }, mistakeCount()) : null, r === 'more' && dot ? h('span', { class: 'ndot', title: 'Немає словацької озвучки' }) : null);
   const map = { lesson: 'lessons', cheat: 'cheats', read: 'reading', text: 'texts', howto: 'add', person: 'people' };
   const active = map[cur] || cur;
   const side = $('#side'); side.replaceChildren(
@@ -410,7 +411,7 @@ function renderNav(cur) {
   );
   const moreActive = !['today', 'lessons', 'cards', 'cheats'].includes(active);
   $('#bottom').replaceChildren(...NAV.filter(n => n[3]).map(([r, label, ic]) => h('a', { class: 'bnav' + (active === r ? ' on' : ''), href: '#' + r }, icon(ic), label)),
-    h('a', { class: 'bnav' + (moreActive ? ' on' : ''), href: '#more' }, icon('more'), 'Ще'));
+    h('a', { class: 'bnav' + (moreActive ? ' on' : ''), href: '#more', 'aria-label': dot ? 'Ще — є нове в налаштуваннях' : null }, icon('more'), 'Ще', dot ? h('span', { class: 'ndot' }) : null));
 }
 
 /* ---------- діалоги ---------- */
@@ -425,7 +426,7 @@ function closeDialog() { const d = $('#dlg'); if (d) d.remove(); }
 let toastT;
 function toast(msg) { let t = $('#toast'); if (!t) { t = h('div', { id: 'toast', role: 'status' }); document.body.append(t); } t.textContent = msg; t.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => { t.hidden = true; }, 2600); }
 function chooseCourse() {
-  if (CLOUD && !canEdit()) { toast('Номер уроку курсу змінюють Діма й Наташа'); return; }
+  if (CLOUD && !canEdit()) { toast('Номер уроку курсу змінює Діма'); return; }
   let pick = courseNum();
   const grid = h('div', { class: 'numgrid' }, Array.from({ length: 35 }, (_, i) => i + 1).map(n => h('button', { class: n === pick ? 'on' : '', onclick: e => { pick = n; grid.querySelectorAll('button').forEach(b => b.classList.toggle('on', +b.textContent === n)); } }, n)));
   dialog('На якому уроці зараз курс?', h('div', { class: 'col' }, h('p', { class: 'muted small' }, 'Урок за підручником (заняття у вівторок). Це число спільне для всієї групи: від нього залежать розминка й межі тренажера форм.'), grid), [['Скасувати', () => { }, 'ghost'], ['Зберегти', () => { S.course = pick; save(); if (CLOUD && ACC && window.Cloud.saveCourse) window.Cloud.saveCourse(pick).then(() => { ACC.course = pick; render(); toast('Курс: урок ' + pick + ' — для всіх'); }, e => toast('Не вдалося зберегти: ' + (e.code || e.message))); render(); }]]);
@@ -437,9 +438,17 @@ function switchProfile() {
 
 /* ---------- озвучка (лише якщо є словацький голос) ---------- */
 let SK_VOICE = null;
-function findVoice() { try { const vs = speechSynthesis.getVoices(); SK_VOICE = vs.find(v => /^sk/i.test(v.lang)) || null; } catch (e) { SK_VOICE = null; } }
+let VOICE_READY = false;
+function findVoice() { try { const vs = speechSynthesis.getVoices(); SK_VOICE = vs.find(v => /^sk/i.test(v.lang)) || null; if (vs.length) VOICE_READY = true; } catch (e) { SK_VOICE = null; } }
+/** словацького голосу немає на цьому пристрої. Список голосів підвантажується не одразу,
+   тож «немає» кажемо лише після того, як браузер його віддав (або через 4 с тиші). */
+const ttsMissing = () => !('speechSynthesis' in window) || (VOICE_READY && !SK_VOICE);
+const TTS_SEEN = 'sk.ttsHintSeen';
+const ttsDot = () => { if (!ttsMissing()) return false; try { return !localStorage.getItem(TTS_SEEN); } catch (e) { return false; } };
+function ttsSeen() { if (!ttsDot()) return; try { localStorage.setItem(TTS_SEEN, '1'); } catch (e) { } renderNav(ROUTE.split('-')[0]); }
+setTimeout(() => { if (VOICE_READY) return; VOICE_READY = true; if (!SK_VOICE && PROFILE && $('#side')) { if (ROUTE.split('-')[0] === 'more' && $('#player').hidden) render(); else renderNav(ROUTE.split('-')[0]); } }, 4000);
 function stopSpeech() { try { speechSynthesis.cancel(); } catch (e) { } }
-try { findVoice(); speechSynthesis.onvoiceschanged = () => { const had = !!SK_VOICE; findVoice(); if (!had && SK_VOICE && PROFILE && $('#player').hidden) render(); }; } catch (e) { }
+try { findVoice(); speechSynthesis.onvoiceschanged = () => { const had = !!SK_VOICE, ready = VOICE_READY; findVoice(); if (!PROFILE || !$('#side')) return; if (!had && SK_VOICE && $('#player').hidden) render(); else if (!ready && VOICE_READY && !SK_VOICE) { if (ROUTE.split('-')[0] === 'more' && $('#player').hidden) render(); else renderNav(ROUTE.split('-')[0]); } }; } catch (e) { }
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') stopSpeech(); });
 window.addEventListener('pagehide', stopSpeech);
 function speakBtn(text, light) {
@@ -1072,7 +1081,7 @@ function checkSent(val, answers) {
 }
 /** кнопка «мій варіант теж правильний»: переклад має багато варіантів */
 function ownRight(it, val) {
-  return h('button', { class: 'link', style: 'margin-top:6px', onclick: e => { PL.stats.bad = Math.max(0, PL.stats.bad - 1); PL.stats.ok++; if (it.task && it.task.sid) { S.sent = S.sent || {}; S.sent[it.task.sid] = today(); } if (it.mkey && val && val.trim()) { S.accepted = S.accepted || {}; S.accepted[it.mkey] = [...new Set((S.accepted[it.mkey] || []).concat(val.trim()))].slice(-8); } if (it.mkey) delete S.mistakes[it.mkey]; save(); track('own', { k: it.mkey || '', u: val || '' }); const ri = PL.items.findIndex((x, j) => j > PL.i && x.retry && x.mkey === it.mkey); if (ri > 0) { PL.items.splice(ri, 1); PL.total--; progressUI(); } e.target.replaceWith(h('span', { class: 'tiny' }, 'Зараховано й запам\'ятано: наступного разу цей варіант прийметься одразу. Якщо сумніваєшся — спитай викладачку.')); } }, 'Мій варіант теж правильний');
+  return h('button', { class: 'link', style: 'margin-top:6px', onclick: e => { PL.stats.bad = Math.max(0, PL.stats.bad - 1); PL.stats.ok++; if (it.task && it.task.sid) { S.sent = S.sent || {}; S.sent[it.task.sid] = today(); } if (it.mkey && val && val.trim()) { S.accepted = S.accepted || {}; S.accepted[it.mkey] = [...new Set((S.accepted[it.mkey] || []).concat(val.trim()))].slice(-8); } if (it.mkey) delete S.mistakes[it.mkey]; save(); track('own', { k: it.mkey || '', u: val || '' }); const ri = PL.items.findIndex((x, j) => j > PL.i && x.retry && x.mkey === it.mkey); if (ri > 0) { PL.items.splice(ri, 1); PL.total--; progressUI(); } e.target.replaceWith(h('span', { class: 'tiny' }, 'Зараховано й запам\'ятано: наступного разу цей варіант прийметься одразу. Якщо сумніваєшся — подивись в інтернеті або спитай в ШІ.')); } }, 'Мій варіант теж правильний');
 }
 function sentInput(root, label) {
   const inp = h('textarea', { class: 'answer', id: 'ans', rows: 2, autocomplete: 'off', autocapitalize: 'sentences', spellcheck: 'false', lang: 'sk', 'aria-label': label, oninput: () => enablePrimary(inp.value.trim().length > 0) });
@@ -1427,7 +1436,7 @@ function setMove(slot, val, what) {
   save(); render(); toast(TR_NAME[slot.tr] + ': ' + what);
 }
 function moveDialog(pickKey) {
-  if (!canEdit()) { toast('Переносити заняття можуть лише Діма й Наташа'); return; }
+  if (!canEdit()) { toast('Переносити заняття може лише Діма'); return; }
   const now = new Date();
   const slots = classSlots(addDays(today(), -14), addDays(today(), 28)).filter(x => x.at > now || x.base > now || (x.off && x.base > addDaysDate(now, -1)));
   if (!slots.length) { toast('Немає найближчих занять'); return; }
@@ -1801,6 +1810,22 @@ VIEWS.eslovak = main => {
     })));
 };
 
+/** рядок «Озвучка»: стан, вмикач і, якщо голосу немає, посилання на гайд у довідці */
+function ttsRow() {
+  const miss = ttsMissing(), dot = ttsDot();
+  const state = SK_VOICE ? (S.settings.tts === false ? 'вимкнено' : 'увімкнено (' + SK_VOICE.name + ')') : !VOICE_READY ? 'перевіряю…' : 'немає словацького голосу на цьому пристрої';
+  const row = h('div', { class: 'spread tts-row' },
+    h('div', { class: 'col', style: 'gap:2px;min-width:0' },
+      h('span', null, 'Озвучка', h('a', { class: 'qlink', href: '#help-voice', 'aria-label': 'Довідка про озвучку', title: 'Довідка про озвучку' }, icon('help')), dot ? h('span', { class: 'ndot inline' }) : null, ': ', h('b', null, state)),
+      miss ? h('a', { class: 'small b', href: '#help-voice' }, 'Гайд, як встановити словацьку озвучку для слів →') : null),
+    SK_VOICE ? h('button', { class: 'btn ghost small', onclick: () => { S.settings.tts = S.settings.tts === false; save(); render(); } }, S.settings.tts === false ? 'Увімкнути' : 'Вимкнути') : null);
+  if (dot) {
+    /* крапка в меню гасне, коли рядок справді з'явився на екрані */
+    if ('IntersectionObserver' in window) { const io = new IntersectionObserver(es => { if (es.some(x => x.isIntersecting)) { io.disconnect(); setTimeout(ttsSeen, 600); } }, { threshold: 0.6 }); setTimeout(() => io.observe(row), 0); }
+    else setTimeout(ttsSeen, 600);
+  }
+  return row;
+}
 VIEWS.more = main => {
   main.append(h('div', { class: 'stack', style: 'max-width:760px' }, h('h1', { class: 'morenav' }, 'Ще'),
     h('div', { class: 'card morenav' }, h('div', { class: 'list' }, navItems().filter(n => !n[3] && n[0] !== 'more').map(([r, label, ic]) => h('a', { class: 'li', href: '#' + r, style: 'text-decoration:none;color:inherit' }, h('span', { class: 'ico g', html: I[ic] }), h('span', { class: 'b grow' }, label), r === 'mistakes' && mistakeCount() ? h('span', { class: 'badge' }, mistakeCount()) : null)))),
@@ -1810,7 +1835,7 @@ VIEWS.more = main => {
       CLOUD ? h('div', { class: 'spread' }, h('span', null, 'Синхронізація: ', h('b', null, { ok: 'збережено', saving: 'зберігаю…', err: 'помилка (' + SYNC.err + ')', local: 'очікує' }[SYNC.state] || SYNC.state)), h('button', { class: 'btn ghost small', onclick: () => { pushCloud(); toast('Зберігаю…'); } }, 'Зберегти зараз')) : null,
       h('div', { class: 'spread' }, h('span', null, 'Я вчу: ', h('b', null, 'уроки з ' + focusNum() + '-го')), h('button', { class: 'btn ghost small', onclick: chooseFocus }, 'Змінити')),
       !onCourse() ? null : h('div', { class: 'spread' }, h('span', null, 'Курс зараз на уроці: ', h('b', null, courseNum())), canEdit() || !CLOUD ? h('button', { class: 'btn ghost small', onclick: chooseCourse }, 'Змінити') : null),
-      h('div', { class: 'spread' }, h('span', null, 'Озвучка: ', h('b', null, SK_VOICE ? (S.settings.tts === false ? 'вимкнено' : 'увімкнено (' + SK_VOICE.name + ')') : 'немає словацького голосу в системі')), SK_VOICE ? h('button', { class: 'btn ghost small', onclick: () => { S.settings.tts = S.settings.tts === false; save(); render(); } }, S.settings.tts === false ? 'Увімкнути' : 'Вимкнути') : null),
+      ttsRow(),
       h('div', { class: 'spread' }, h('span', null, 'Звуки відповідей: ', h('b', null, S.settings.sound === false ? 'вимкнено' : 'увімкнено')), h('button', { class: 'btn ghost small', onclick: () => { S.settings.sound = S.settings.sound === false; save(); render(); if (S.settings.sound !== false) sfx('ok'); } }, S.settings.sound === false ? 'Увімкнути' : 'Вимкнути')),
       h('div', { class: 'spread' }, h('div', { class: 'col', style: 'gap:2px' }, h('span', null, 'Повтор помилок у кінці сесії: ', h('b', null, retryOn() ? 'увімкнено' : 'вимкнено')), h('span', { class: 'tiny muted' }, retryOn() ? 'Неправильну відповідь повториш у кінці сесії; правильно — і вона не піде в «Помилки».' : 'Неправильні відповіді одразу йдуть у розділ «Помилки».')),
         h('button', { class: 'btn ghost small', onclick: () => { S.settings.retry = !retryOn(); S.news = Object.assign({}, S.news, { retry: S.news && S.news.retry || today() }); save(); render(); } }, retryOn() ? 'Вимкнути' : 'Увімкнути')),
@@ -1952,7 +1977,7 @@ function notifyCard() {
       onCourse() ? h('p', { class: 'tiny muted', style: 'margin:-6px 0 0' }, 'Враховує перенесення й скасування.') : null),
     chk(!NT.on, v => { ntSet({ on: !v }, true); render(); toast(v ? 'Усі сповіщення вимкнено' : 'Сповіщення знову увімкнено'); }, 'Вимкнути всі сповіщення'),
     h('div', { class: 'spread' }, h('span', { class: 'small muted' }, nDev ? 'Пристроїв зі сповіщеннями: ' + nDev + ' (' + Object.values(NT.devices).map(d => d.ua).join(', ') + ')' : 'Сповіщення ще не увімкнено на жодному пристрої.'),
-      h('button', { class: 'btn ghost small', disabled: !nDev || !NT.on, onclick: () => { ntSet({ test: Date.now() }, true); toast('Тестове сповіщення прийде протягом хвилини'); } }, 'Перевірити')));
+      h('button', { class: 'btn ghost small', disabled: !nDev || !NT.on, onclick: () => { ntSet({ test: Date.now() }, true); toast('Тестове сповіщення прийде протягом хвилини-двох'); } }, 'Перевірити')));
 }
 
 /* ---------- перевірка формату уроку (той самий формат дає шаблон для безкоштовного чату) ---------- */
@@ -2034,6 +2059,8 @@ function saveLessonEverywhere(L) {
    Посилання на розділ: #help-<id>. Пошук шукає по заголовку й тексту. */
 function helpSections() {
   const course = onCourse() || !CLOUD, ed = canEdit() || !CLOUD;
+  /* хто може: адміну — «ти», редактору — «Діма (і ти теж)», решті — «Діма» */
+  const whoCan = (base, you) => isAdmin() || !CLOUD ? you + '.' : ed ? base + ' (і ти теж).' : base + '.';
   return [
     { id: 'start', t: 'Як займатися щодня', b: [
       'Головне — **«Сесія на сьогодні»** на головній сторінці, кнопка «Почати». Зазвичай 20–30 хвилин.',
@@ -2043,11 +2070,11 @@ function helpSections() {
     { id: 'lessons', t: 'Уроки, дні й «Я вчу»', b: [
       'Кожен урок граматики й лексики — це **7 днів**: 5 днів з новим матеріалом і 2 дні повторення. Дні повторення змішують вправи цього уроку, його слова і твої помилки з інших уроків.',
       '**«Я вчу: уроки з N-го»** (на головній і в «Ще») — з якого уроку «Сесія на сьогодні» бере дні граматики й лексики. Наприклад, 10 — це уроки десятого тижня курсу. Попередні уроки лишаються в «Уроках», їх можна пройти будь-коли.',
-      course ? '**«Курс зараз: урок N»** — де група на заняттях. Від цього числа залежать розминка перед заняттям і те, які слова бере тренажер форм. ' + (ed ? 'Змінюють його Діма й Наташа (і ти теж).' : 'Змінюють його Діма й Наташа.') : null,
+      course ? '**«Курс зараз: урок N»** — де група на заняттях. Від цього числа залежать розминка перед заняттям і те, які слова бере тренажер форм. ' + whoCan('Змінює його Діма', 'Змінюєш його ти (у «Ще»)') : null,
       'Будь-який день відкривається в «Уроки» → урок → номер дня.'] },
     { id: 'check', t: 'Як перевіряються відповіді', b: [
       ['ul', '**Не важливі:** великі чи малі літери, зайві пробіли, крапка чи знак питання в кінці.', '**Важлива діакритика.** Якщо все правильно, крім рисок і гачків (á, č, ľ, ô…), буде **«Майже»** з підсвіченим місцем. Таке завдання теж іде в «Помилки».', '**Одруківка** навіть в одній літері — це «Не зовсім». Наприклад, «moij» замість «moji».'],
-      'Переклад речення часто має кілька правильних варіантів. Якщо твій правильний, а платформа його не прийняла, натисни **«Мій варіант теж правильний»**: відповідь зарахується, і цей варіант запам\'ятається для цього завдання. Якщо сумніваєшся — краще спитай викладачку, ніж зараховувати помилку.'] },
+      'Переклад речення часто має кілька правильних варіантів. Якщо твій правильний, а платформа його не прийняла, натисни **«Мій варіант теж правильний»**: відповідь зарахується, і цей варіант запам\'ятається для цього завдання. Якщо сумніваєшся — краще подивись в інтернеті або спитай в ШІ, ніж зараховувати помилку.'] },
     { id: 'hints', t: 'Підказки, шпаргалки й переклад слів', b: [
       ['ul', '**Синя плашка** у вправі з пропуском — переклад слова, яке треба вставити, і число (однина чи множина), якщо з речення його не видно.', '**«Підказка»** — словацьке слово й переклад усього речення. Відкривай, коли справді застряг: самостійна спроба запам\'ятовується краще.', '**«Шпаргалка»** вгорі під час вправи — правило цього уроку.'],
       '**Переклад по дотику.** Натисни будь-яке слово в реченні завдання, у правильній відповіді чи в тексті уроку — з\'явиться переклад і кнопка озвучки. Якщо поруч написано «(форма від …)», платформа сама вгадала початкову форму слова: тут можливі неточності.',
@@ -2066,13 +2093,22 @@ function helpSections() {
     course ? { id: 'classes', t: 'Заняття й розминка', b: [
       'Розклад курсу: **граматика — у вівторок, лексика — у середу, о 17:00**. Найближче заняття — у картці на головній.',
       'Приблизно за добу до заняття в картці з\'являється **«Розминка»** (~5 хв): вправи уроку, твої помилки, кілька слів і фраза вголос.',
-      ed ? 'Переносити заняття можуть **Діма й Наташа**: «перенести» в картці заняття. Перенесення одразу бачать усі, а нагадування його враховують. Там же — «Історія занять».' : 'Якщо заняття перенесли, це одразу видно в картці, а нагадування приходять на новий час. Переносять заняття Діма й Наташа.'] } : null,
+      ed ? whoCan('Переносити заняття може **Діма**', 'Переносити заняття можеш **ти**') + ' Кнопка «перенести» — у картці заняття. Перенесення одразу бачать усі, а нагадування його враховують. Там же — «Історія занять».' : 'Якщо заняття перенесли, це одразу видно в картці, а нагадування приходять на новий час. Переносить заняття Діма.'] } : null,
     { id: 'streaks', t: 'Вогники й активність', b: [
       '**Вогник** — скільки днів поспіль ти завершив хоча б одну сесію (будь-яку: сесію на сьогодні, картки, тренажер). Пропустив день — рахунок починається знову.',
       '**«Активність за 2 тижні»** — кожен заповнений квадрат означає день, коли була сесія.',
-      'Вогники й календар учасників курсу бачать усі учасники курсу. Вогники глядачів бачить лише Діма.'] },
+      'Вогники й календар учасників курсу бачать усі учасники курсу.'] },
+    { id: 'voice', t: 'Словацька озвучка', b: [
+      'Кнопка 🔊 і озвучка слів беруть **словацький голос, встановлений на пристрої**. Якщо його немає, кнопок озвучки просто не видно. Перевірити: «Ще» → **«Озвучка»**.',
+      ['el', h('div', { class: 'note small' }, 'На цьому пристрої: ', h('b', null, SK_VOICE ? 'словацький голос є (' + SK_VOICE.name + ')' : !VOICE_READY ? 'перевіряю…' : 'словацького голосу немає'))],
+      '**Android** (назви пунктів трохи різняться залежно від телефона):',
+      ['ul', 'Налаштування → **Система** → **Мови** (або «Мова й введення») → **Синтез мовлення** (Text-to-speech).', '«Бажана система» — **Google** («Розпізнавання й синтез мовлення від Google»). Якщо її немає, встанови цей застосунок з Google Play.', 'Шестерня біля Google → **«Встановити голосові дані»** → **Slovenčina (словацька)** → завантажити.', 'На **Samsung**: Налаштування → Загальне керування → **Синтез мовлення** → бажана система **Google** → далі так само.'],
+      '**iPhone чи iPad:** Параметри → **Доступність** → **Озвучений вміст** → **Голоси** → **Словацька** → завантажити голос **Laura**.',
+      '**Windows:** Параметри → **Час і мова** → **Мовлення** → «Додати голоси» → **Slovenčina** (голос Filip).',
+      '**Mac:** Системні параметри → **Доступність** → **Озвучений вміст** → Системний голос → «Керувати голосами» → **Словацька** → Laura.',
+      ['note', 'Після встановлення **повністю закрий браузер або застосунок** (змахни з недавніх) і відкрий знову: браузер бачить нові голоси лише після перезапуску. У «Ще» замість «немає голосу» з\'явиться «увімкнено».']] },
     { id: 'notif', t: 'Сповіщення', b: [
-      ['ul', '«Ще» → **«Сповіщення»** → «Увімкнути». Це треба зробити **на кожному пристрої окремо** й дозволити сповіщення, коли браузер спитає.', '**Щоденне нагадування** приходить о вибраній годині. Якщо сесію на сьогодні вже пройдено — не приходить.', course ? '**Про заняття** — за вибрану кількість хвилин до початку. Перенесення враховуються.' : null, '**«Тест»** — пробне сповіщення протягом хвилини.', '«Вимкнути всі сповіщення» — тимчасово вимикає все, налаштування зберігаються.'],
+      ['ul', '«Ще» → **«Сповіщення»** → «Увімкнути». Це треба зробити **на кожному пристрої окремо** й дозволити сповіщення, коли браузер спитає.', '**Щоденне нагадування** приходить о вибраній годині. Якщо сесію на сьогодні вже пройдено — не приходить.', course ? '**Про заняття** — за вибрану кількість хвилин до початку. Перенесення враховуються.' : null, '**«Тест»** — пробне сповіщення протягом хвилини-двох.', '«Вимкнути всі сповіщення» — тимчасово вимикає все, налаштування зберігаються.'],
       ['note', '**Немає вібрації на Android?** Налаштування телефону → Застосунки → Chrome (або встановлений застосунок «slovenčina») → Сповіщення → канал цього сайту → увімкни вібрацію. Android ігнорує вібрацію, яку просить сайт, — вона налаштовується лише там.'],
       'Якщо браузер **заблокував** сповіщення: натисни значок замка біля адреси сайту → Сповіщення → Дозволити.',
       'Якщо нагадування не приходять: зроби «Тест»; перевір, чи телефон не в режимі економії заряду для Chrome; на iPhone сповіщення поки не підтримуються (версія для iPhone в роботі).'] },
@@ -2088,7 +2124,7 @@ function helpSections() {
       ['ul', 'які розділи ти відкриваєш і скільки часу займаєшся;', 'які сесії почав, закінчив чи кинув і на якому завданні;', 'чи правильна відповідь, скільки секунд ти думав, чи відкривав підказку чи шпаргалку;', '**текст відповіді — лише для неправильних і «Майже»**: так видно завдання, де перевірка надто сувора або підказка незрозуміла;', 'які слова ти натискаєш і що додаєш у «Мої слова»;', 'які кнопки натискаєш (без варіантів відповідей у вправах);', 'тип пристрою й браузера, версія платформи та збої, якщо вони трапились.'],
       '**Не збирається:** тексти правильних відповідей, паролі, контакти, місцезнаходження. Дані лежать у базі Firebase цього проєкту й нікому не передаються. Питання — до Діми.'] },
     { id: 'faq', t: 'Часті питання', b: [
-      ['ul', '**Відповідь правильна, а не зарахувало.** Перевір діакритику й одруківки. Якщо варіант справді правильний — «Мій варіант теж правильний».', '**Випадково натиснув «Мій варіант теж правильний».** Напиши Дімі, яке це було завдання, — він прибере варіант.', '**«Сьогодні» дає не той урок.** Головна → «Я вчу» → «змінити».', '**Не прийшло нагадування.** Див. розділ «Сповіщення»: «Тест», дозвіл у браузері, економія заряду.', '**Не бачу прогрес на іншому пристрої.** Перевір, що це той самий акаунт Google, і подивись «Ще» → «Синхронізація».', '**Як вийти з акаунта.** «Ще» → «Профіль» → «Вийти».']] },
+      ['ul', '**Відповідь правильна, а не зарахувало.** Перевір діакритику й одруківки. Якщо варіант справді правильний — «Мій варіант теж правильний».', '**Випадково натиснув «Мій варіант теж правильний».** Напиши Дімі, яке це було завдання, — він прибере варіант.', '**«Сьогодні» дає не той урок.** Головна → «Я вчу» → «змінити».', '**Не прийшло нагадування.** Див. розділ «Сповіщення»: «Тест», дозвіл у браузері, економія заряду.', '**Немає кнопки озвучки.** На пристрої немає словацького голосу — див. розділ «Словацька озвучка».', '**Не бачу прогрес на іншому пристрої.** Перевір, що це той самий акаунт Google, і подивись «Ще» → «Синхронізація».', '**Як вийти з акаунта.** «Ще» → «Профіль» → «Вийти».']] },
     { id: 'contact', t: 'Щось не працює?', b: [
       'Напиши Дімі: що ти робив, що очікував і що сталося. Скріншот дуже допомагає. Платформа ще й сама записує збої, тож часто Діма побачить проблему раніше.'] }
   ].filter(Boolean);
@@ -2098,6 +2134,7 @@ function helpBlock(b) {
   if (typeof b === 'string') return h('p', null, rich(b));
   if (b[0] === 'ul') return h('ul', null, b.slice(1).filter(Boolean).map(x => h('li', null, rich(x))));
   if (b[0] === 'note') return h('div', { class: 'note small' }, rich(b[1]));
+  if (b[0] === 'el') return b[1];
   return null;
 }
 VIEWS.help = (main, open) => {
@@ -2149,7 +2186,20 @@ function anTask(k) {
   return { where: where + ' · день ' + a, txt: String(t.sk || t.uk || t.q || t.word || t.t).replace(/\*\*/g, ''), ans: ans || t.sk || '', type: t.t };
 }
 /** активний час: сума проміжків між сусідніми подіями, якщо проміжок ≤ 5 хв */
-function anActiveSec(evs) { let s = 0; for (let i = 1; i < evs.length; i++) { const g = (evs[i].t - evs[i - 1].t) / 1000; if (g > 0 && g <= 300) s += g; } return s; }
+/** час за завданнями: лише поки відкрита сесія (ss … se/sx) і вкладка видима; паузи понад 5 хв не рахуються.
+   Повертає { 'YYYY-MM-DD': секунди }. Сесія через північ ділиться між днями. */
+function anTaskSec(evs) {
+  const out = {}; let on = false, vis = true, prev = 0;
+  for (const e of evs) {
+    if (on && vis && prev) { const g = (e.t - prev) / 1000; if (g > 0 && g <= 300) { const d = dstr(new Date(e.t)); out[d] = (out[d] || 0) + g; } }
+    prev = e.t;
+    if (e.e === 'ss') { on = true; vis = true; }
+    else if (e.e === 'se' || e.e === 'sx' || e.e === 'open') on = false;
+    else if (e.e === 'hb') { if (e.r !== 'сесія') on = false; }
+    else if (e.e === 'vis') vis = e.s !== 'hidden';
+  }
+  return out;
+}
 function anLoad(days, force) {
   const from = days === 'all' ? '2000-01-01' : addDays(today(), -(days - 1));
   if (!force && AN.cache && AN.cache.from <= from && Date.now() - AN.cache.at < 5 * 60000) return Promise.resolve(AN.cache.docs);
@@ -2163,11 +2213,11 @@ function anAgg(docs, days, who) {
     if (!d || d.day < from) return;
     const key = EMAIL_KEY[String(d.email || '').toLowerCase()] || d.email; if (who !== 'all' && key !== who) return;
     const u = U[key] = U[key] || { key, name: NAMES[key] || d.name || key, email: d.email, byDay: {}, ev: [], v: d.v };
-    const evs = (d.ev || []).slice().sort((x, y) => x.t - y.t);
-    u.byDay[d.day] = Math.round(anActiveSec(evs) / 60); u.ev.push(...evs); if (d.v) u.v = d.v;
+    u.byDay[d.day] = 0; u.ev.push(...(d.ev || [])); if (d.v) u.v = d.v;
   });
   Object.values(U).forEach(u => {
     u.ev.sort((x, y) => x.t - y.t);
+    Object.entries(anTaskSec(u.ev)).forEach(([d, sec]) => { if (d >= from) u.byDay[d] = Math.round(sec / 60); });
     u.mins = Object.values(u.byDay).reduce((a, b) => a + b, 0);
     u.days = Object.keys(u.byDay).filter(d => u.ev.some(e => e.e !== 'vis' && dstr(new Date(e.t)) === d)).length;
     u.last = u.ev.length ? u.ev[u.ev.length - 1].t : 0;
@@ -2257,7 +2307,7 @@ VIEWS.analytics = main => {
     body.replaceChildren(
       h('div', { class: 'stats' }, tile(activeToday, 'активні сьогодні'), tile(users.filter(u => u.days).length, ui.days === 'all' ? 'активні за весь час' : 'активні за ' + ui.days + ' дн.', ui.days === 'all' ? 'з ' + anDayL(first) : null), tile(users.reduce((a, u) => a + u.mins, 0), 'хвилин навчання'),
         tile(se.length + ' / ' + ss.length, 'сесій завершено / почато'), tile(pct(okAll, ans.length), 'правильних відповідей', ans.length + ' відповідей')),
-      sec(dayList.length > 60 ? 'Хвилини навчання по тижнях' : 'Хвилини навчання по днях', 'Активний час: проміжки між діями до 5 хвилин. Наведи на стовпчик, щоб побачити, хто скільки.', anBars(dayList, U)),
+      sec(dayList.length > 60 ? 'Хвилини навчання по тижнях' : 'Хвилини навчання по днях', 'Лише час за завданнями: поки відкрита сесія, картки чи тренажер. Паузи понад 5 хвилин і інші сторінки не рахуються. Наведи на стовпчик, щоб побачити, хто скільки.', anBars(dayList, U)),
       sec('Люди', 'Вогник і «сесія на сьогодні» — з прогресу; решта — за обраний період.', anTable(['Хто', 'Роль', 'Остання дія', 'Днів', 'Хв', 'Сесій', 'Кинуто', 'Відповідей', 'Точність', 'Вогник', 'Сьогодні', 'Пристрій', 'Версія'],
         users.map(u => { const st = stateOf(u.key); const o = u.open || {}; return [h('b', null, u.name), ROLE_UA[roleOf(u.key)] || '—', anWhen(u.last), u.days, u.mins, u.se + ' / ' + u.ss, u.sx || '·', u.ans, pct(u.ok, u.ans), st ? streakOf(st) : '—', st && st.daily && st.daily[today()] ? '✓ пройдена' : '—', o.plat ? o.plat + (o.pwa ? ', застосунок' : ', ' + o.br) : '—', u.v || '—']; }))),
       sec('Сесії', 'Скільки почали, закінчили й кинули. «Де кидають» — середня позиція виходу.', anTable(['Тип', 'Почато', 'Завершено', 'Кинуто', 'Де кидають'],
@@ -2321,7 +2371,7 @@ VIEWS.people = main => {
       h('li', null, h('b', null, 'Глядач: '), 'навчання без занять курсу. Бачить вогники всіх, крім інших глядачів; його вогник бачить лише адмін.')))));
 };
 VIEWS.add = main => {
-  if (CLOUD && !canEdit()) { main.append(h('div', { class: 'stack', style: 'max-width:760px' }, h('h1', null, 'Додати урок'), h('p', { class: 'muted' }, 'Уроки додають Діма й Наташа.'))); return; }
+  if (CLOUD && !canEdit()) { main.append(h('div', { class: 'stack', style: 'max-width:760px' }, h('h1', null, 'Додати урок'), h('p', { class: 'muted' }, 'Уроки додає Діма.'))); return; }
   const ta = h('textarea', { class: 'txt', id: 'lessonjson', spellcheck: 'false', placeholder: 'Встав сюди відповідь Claude з JSON уроку…', style: 'min-height:180px;font-family:monospace;font-size:14px' });
   const file = h('input', { type: 'file', accept: '.json,application/json,text/plain', id: 'lessonfile', multiple: true });
   const out = h('div', { class: 'col' });

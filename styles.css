@@ -395,3 +395,17 @@ textarea.answer{height:auto;resize:vertical;min-height:62px;line-height:1.4;padd
 .hsec .hbody p{margin:0}
 .hsec .hbody ul{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:6px}
 .hsec .hbody .note{font-weight:500}
+/* v3.7: бічне меню без смуги прокрутки (гортається колесом/жестом), компактніше на низьких екранах */
+#side{scrollbar-width:none;-ms-overflow-style:none}
+#side::-webkit-scrollbar{display:none;width:0;height:0}
+@media (max-height:860px){#side{padding-top:16px;padding-bottom:12px}#side .nav{padding-top:7px;padding-bottom:7px}}
+/* крапка «є нове» в меню й біля «Озвучки» */
+.ndot{display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--orange);flex:none;box-shadow:0 0 0 2px var(--card)}
+.nav .ndot{margin-left:auto}
+.bnav{position:relative}
+.bnav .ndot{position:absolute;top:10px;left:calc(50% + 9px)}
+.ndot.inline{margin:0 2px 2px 6px;vertical-align:middle}
+.qlink{display:inline-flex;vertical-align:-3px;margin-left:5px;color:var(--muted)}
+.qlink svg{width:17px;height:17px}
+.qlink:hover{color:var(--green-t)}
+.tts-row a.small{text-decoration:underline;color:var(--green-t)}
