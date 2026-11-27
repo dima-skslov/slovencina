@@ -35,7 +35,7 @@ const V_TOPICS = { 1: 'Абетка, вимова, знайомство', 2: 'М
 const DIA = ['á', 'ä', 'č', 'ď', 'é', 'í', 'ĺ', 'ľ', 'ň', 'ó', 'ô', 'ŕ', 'š', 'ť', 'ú', 'ý', 'ž'];
 const SRS_IV = [0, 1, 2, 4, 8, 16, 32];
 const DAILY_CARDS = 15; // карток у сесії на сьогодні
-const APP_VERSION = '3.8 (28.11)';
+const APP_VERSION = '3.9 (28.11)';
 
 /* ---------- іконки (власні константи) ---------- */
 const I = {
@@ -507,7 +507,7 @@ function openPlayer() {
   $('#player').hidden = false; document.body.style.overflow = 'hidden'; document.documentElement.style.overscrollBehavior = 'none';
   plHistPush();
 }
-function closePlayer(after) { if (PL.items && PL.i < PL.items.length && PL.total) track('sx', { k: PL.resumeKey, i: PL.done, n: PL.total, s: Math.round((Date.now() - PL.started) / 1000) }); $('#player').hidden = true; document.body.style.overflow = ''; document.documentElement.style.overscrollBehavior = ''; closeCheat(); render(); plHistPop(after); }
+function closePlayer(after) { if (PL.items && PL.i < PL.items.length && PL.total) track('sx', { k: PL.resumeKey, i: PL.done, n: PL.total, s: Math.round((Date.now() - PL.started) / 1000) }); $('#player').hidden = true; document.body.style.overflow = ''; document.documentElement.style.overscrollBehavior = ''; closeCheat(); render(); plHistPop(after); setTimeout(showUpdate, 400); }
 function askExit() {
   const saved = PL.i < PL.items.length;
   dialog('Вийти з сесії?', h('p', null, saved ? 'Прогрес збережено: наступного разу продовжиш з ' + Math.min(PL.done + 1, PL.total) + '-го завдання з ' + PL.total + '.' : 'Сесію завершено.'), [['Продовжити', () => { }, 'ghost'], ['Вийти', () => { closePlayer(); }, 'orange']]);
@@ -1548,7 +1548,7 @@ VIEWS.today = main => {
       h('div', { class: 'stack' },
         h('div', { class: 'streaks' }, [[PROFILE, S], ...othersAll().map(x => [x.id, x.st])].map(([id, st]) => streakTile(id, st, CLOUD && isAdmin() && id !== PROFILE ? 'hide' : null))),
         h('div', { class: 'card' }, h('h3', null, 'Активність за 2 тижні'), h('div', { class: 'cal' }, calendarRow(NAMES[PROFILE], S), othersAll().map(x => calendarRow(NAMES[x.id], x.st)))),
-        CLOUD && onCourse() && !Object.keys(S.done).length && !Object.keys(S.cards).length ? h('div', { class: 'card' }, h('h3', null, 'Є прогрес з пілоту?'), h('p', { class: 'small muted' }, 'У пілоті: Налаштування → «Скопіювати копію». Тут: Налаштування → «Відновити з копії».'), h('button', { class: 'btn ghost small', onclick: importDialog }, 'Відновити з копії')) : null,
+        CLOUD && ['dima', 'natasha'].includes(PROFILE) && !Object.keys(S.done).length && !Object.keys(S.cards).length ? h('div', { class: 'card' }, h('h3', null, 'Є прогрес з пілоту?'), h('p', { class: 'small muted' }, 'У пілоті: Налаштування → «Скопіювати копію». Тут: Налаштування → «Відновити з копії».'), h('button', { class: 'btn ghost small', onclick: importDialog }, 'Відновити з копії')) : null,
         !Object.keys(C.lessons).length ? h('a', { class: 'card', href: '#add', style: 'text-decoration:none;color:inherit' }, h('h3', null, 'Уроків ще немає'), h('p', { class: 'small muted' }, 'Додай перший урок: розділ «Додати урок».')) : null,
         Object.keys(C.banks).length ? h('a', { class: 'card', href: '#sent', style: 'text-decoration:none;color:inherit' }, h('div', { class: 'spread' }, h('div', { class: 'col', style: 'gap:2px' }, h('span', { class: 'b' }, 'Тренажер речень'), h('span', { class: 'small muted' }, 'Переклади українське речення словацькою · рівні 1–' + Object.keys(C.banks).length)), h('span', { class: 'ico s', html: I.sent }))) : null,
         mistakeCount() ? h('a', { class: 'card', href: '#mistakes', style: 'text-decoration:none;color:inherit' }, h('div', { class: 'spread' }, h('span', { class: 'b' }, 'Помилки до повторення'), h('span', { class: 'badge' }, mistakeCount()))) : null
@@ -1874,11 +1874,13 @@ VIEWS.more = main => {
     h('div', { class: 'card' }, h('h3', null, 'Діагностика'), h('div', { class: 'small', style: 'line-height:1.7' },
       h('div', null, 'Адреса: ', h('b', null, location.host || 'локально')),
       h('div', null, 'Режим: ', h('b', null, CLOUD ? 'база Firebase' : 'лише цей браузер (пілот)')),
+      CLOUD && window.Cloud && typeof window.Cloud.lessonReads === 'number' ? h('div', null, 'Уроків прочитано з бази при запуску: ', h('b', null, window.Cloud.lessonReads), window.Cloud.lessonReads < 5 ? ' (решта — з копії на пристрої)' : '') : null,
       CLOUD ? h('div', null, 'Акаунт: ', h('b', null, (window.Cloud && window.Cloud.email) || '—')) : null,
       CLOUD ? h('div', null, 'Остання синхронізація: ', h('b', null, (SYNC.at || '—') + ' · ' + ({ ok: 'успішно', err: 'ПОМИЛКА ' + SYNC.err, saving: 'триває', local: 'ще не було' }[SYNC.state] || SYNC.state))) : null,
       h('div', null, 'Пройдено днів: ', h('b', null, Object.keys(S.done).length), ' · карток: ', h('b', null, Object.keys(S.cards).length), ' · серія: ', h('b', null, streakOf(S))),
       h('div', null, 'Дні: ', h('b', null, doneSummary() || '—')))),
-    h('p', { class: 'tiny muted' }, (CLOUD ? 'Версія: ' + APP_VERSION : 'Версія: пілот 0.5') + ' · уроків завантажено: ' + Object.keys(C.lessons).length + (C.errors.length ? ' · помилка завантаження: ' + C.errors.join(', ') : ''))));
+    h('div', { class: 'row wrap', style: 'gap:10px;align-items:center' }, h('p', { class: 'tiny muted', style: 'margin:0' }, (CLOUD ? 'Версія: ' + APP_VERSION : 'Версія: пілот 0.5') + ' · уроків завантажено: ' + Object.keys(C.lessons).length + (C.errors.length ? ' · помилка завантаження: ' + C.errors.join(', ') : '')),
+      SCRIPT_V ? h('button', { class: 'link tiny b', onclick: async e => { const b = e.currentTarget; b.disabled = true; b.textContent = 'Перевіряю…'; const yes = UPD.ready || await checkUpdate(true); b.disabled = false; b.textContent = 'Перевірити оновлення'; if (!yes) toast('У тебе найновіша версія'); else { UPD.off = 0; showUpdate(); } } }, 'Перевірити оновлення') : null)));
 };
 function showExport(txt) { const ta = h('textarea', { class: 'txt', readonly: true, 'aria-label': 'Копія прогресу' }); ta.value = txt; dialog('Копія прогресу', h('div', { class: 'col' }, h('p', { class: 'small' }, 'Виділи весь текст і скопіюй.'), ta), [['Готово', () => { }]]); }
 function importDialog() {
@@ -1927,7 +1929,10 @@ let ntBusy = false;
 function ntSync(now) {
   if (!(CLOUD && UID && window.Cloud && window.Cloud.saveNotify && NT.loaded)) return;
   clearTimeout(ntT); ntT = setTimeout(async () => {
-    if (ntBusy) { ntSync(); return; } ntBusy = true;
+    if (ntBusy) { ntSync(); return; }
+    /* нічого не змінилось — не читаємо й не пишемо (раніше кожна відповідь у сесії давала зайве читання) */
+    if (!now && JSON.stringify(ntDoc()) === NT_LAST) return;
+    ntBusy = true;
     try {
       try { const d = await window.Cloud.loadNotify(UID); if (d && d.json && d.json !== NT_LAST) { ntAdopt(JSON.parse(d.json)); Store.set('nt.' + PROFILE, NT); } } catch (e) { /* офлайн — пишемо як є */ }
       const json = JSON.stringify(ntDoc());
@@ -2002,6 +2007,54 @@ function notifyCard() {
       h('button', { class: 'btn ghost small', disabled: !nDev || !NT.on, onclick: () => { ntSet({ test: Date.now() }, true); toast('Тестове сповіщення прийде протягом хвилини-двох'); } }, 'Перевірити')));
 }
 
+
+
+/* =====================================================================
+   НОВА ВЕРСІЯ. Файли й так завжди беруться свіжі з мережі, але застосунок, що висить у фоні,
+   не перезавантажується. Тож час від часу дивимось на index.html сайту: якщо там новий app.js?v=…,
+   показуємо плашку. Під час вправи — не заважаємо: плашка з'явиться після сесії.
+   ===================================================================== */
+const SCRIPT_V = (() => { const el = document.querySelector('script[src*="app.js"]'); const m = el && (el.getAttribute('src') || '').match(/[?&]v=([^&]+)/); return m ? m[1] : ''; })();
+const UPD = { at: 0, ready: '', off: 0 };
+async function checkUpdate(force) {
+  if (!SCRIPT_V || UPD.ready || (navigator.onLine === false)) return false;
+  if (!force && Date.now() - UPD.at < 10 * 60000) return false;
+  UPD.at = Date.now();
+  try {
+    const r = await fetch('index.html', { cache: 'no-store' }); if (!r.ok) return false;
+    const m = (await r.text()).match(/app\.js\?v=([^"'&\s>]+)/);
+    if (m && m[1] !== SCRIPT_V) { UPD.ready = m[1]; track('upd', { a: 'seen', from: SCRIPT_V, to: m[1] }); showUpdate(); return true; }
+  } catch (e) { }
+  return false;
+}
+function showUpdate() {
+  if (!UPD.ready || $('#upd') || !PROFILE || !$('#player').hidden || ONB) return;
+  if (UPD.off && Date.now() - UPD.off < 60 * 60000) return;
+  const later = h('button', { class: 'btn ghost small', onclick: () => { UPD.off = Date.now(); bar.remove(); track('upd', { a: 'later' }); } }, 'Пізніше');
+  const now = h('button', { class: 'btn small', onclick: () => applyUpdate(now) }, 'Оновити');
+  const bar = h('div', { id: 'upd', role: 'status', 'aria-live': 'polite' },
+    h('div', { class: 'upd-t' }, h('b', null, 'Доступна нова версія'), h('span', { class: 'small muted' }, 'Кілька секунд — прогрес збережеться.')),
+    h('div', { class: 'row', style: 'gap:6px;flex:none' }, later, now));
+  document.body.append(bar);
+}
+async function applyUpdate(btn) {
+  if (btn) { btn.disabled = true; btn.textContent = 'Оновлюю…'; }
+  track('upd', { a: 'apply', to: UPD.ready });
+  try { localStorage.setItem('sk.updFrom', APP_VERSION); } catch (e) { }
+  /* усе незбережене — в чергу бази (вона переживає перезавантаження) і в цей браузер */
+  try { if (PROFILE && S) Store.set('p.' + PROFILE, S); if (cloudT) pushCloud(); if (SLOT_Q.size) slotFlush(); flushAn(); } catch (e) { }
+  let gone = false; const go = () => { if (!gone) { gone = true; location.reload(); } };
+  try { const reg = navigator.serviceWorker && await navigator.serviceWorker.getRegistration(); if (reg) reg.update().catch(() => { }); } catch (e) { }
+  setTimeout(go, 1200);
+}
+/** після оновлення — коротко сказати, що вийшло */
+function updDone() {
+  let from = null; try { from = localStorage.getItem('sk.updFrom'); localStorage.removeItem('sk.updFrom'); } catch (e) { }
+  if (from && from !== APP_VERSION) { toast('Оновлено до версії ' + APP_VERSION); track('upd', { a: 'done', from, to: APP_VERSION }); }
+}
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') { checkUpdate(); showUpdate(); } });
+window.addEventListener('online', () => checkUpdate(true));
+setInterval(() => { if (document.visibilityState === 'visible') checkUpdate(); }, 15 * 60000);
 
 /* =====================================================================
    ЗНАЙОМСТВО: один раз при першому вході нового учасника (кроки: вітання, урок, нагадування, застосунок і озвучка).
@@ -2346,7 +2399,7 @@ function helpSections() {
       ['ul', '**Android (Chrome):** меню ⋮ → «Додати на головний екран» або «Встановити застосунок».', '**Комп\'ютер (Chrome чи Edge):** значок встановлення праворуч в адресному рядку.', '**iPhone чи iPad (Safari):** «Поділитися» → «На екран «Додому»». Версію для iPhone ще доробляємо, тож можливі дрібні незручності.']] },
     { id: 'sync', t: 'Кілька пристроїв, інтернет і оновлення', b: [
       ['ul', 'Прогрес зберігається в хмарі. Заходь **тим самим акаунтом Google** — і все буде однаковим на телефоні й комп\'ютері.', 'Незавершену сесію можна продовжити на іншому пристрої.', 'Без інтернету займатися можна: зміни відправляться, щойно з\'явиться зв\'язок.', 'Стан збереження видно в «Ще» → «Синхронізація»; «Зберегти зараз» відправляє примусово.'],
-      '**Оновлення** приходять самі. Якщо не бачиш змін, про які казав Діма, закрий застосунок повністю (змахни з недавніх) і відкрий знову. Номер версії — внизу сторінки «Ще».'] },
+      '**Оновлення.** Коли виходить нова версія, внизу з\'являється плашка **«Доступна нова версія»** — натисни «Оновити», прогрес збережеться. Під час вправи плашка не заважає: з\'явиться після сесії. Перевірити вручну — «Ще» → «Перевірити оновлення» (внизу сторінки, біля номера версії).'] },
     { id: 'data', t: 'Які дані збираються і навіщо', b: [
       '**Твій прогрес** — пройдені дні, картки, помилки, «Мої слова», налаштування. Він потрібен, щоб усе працювало однаково на всіх твоїх пристроях. Іншим учасникам видно лише твій вогник і календар активності.',
       '**Статистика використання** — її бачить **лише Діма**, щоб покращувати платформу. Що в ній:',
@@ -2876,6 +2929,7 @@ async function cloudBoot() {
     }, () => { });
     ungate(); render();
     track('open', Object.assign(devInfo(), { role: roleOf(PROFILE), d: DEV })); ttsReport();
+    updDone(); setTimeout(() => checkUpdate(true), 30000);
     const ntP = ntLoad().then(() => { if (ROUTE === 'more') render(); });
     repWatch();
     /* знайомство для нового учасника: один раз, коли ще немає жодного прогресу */

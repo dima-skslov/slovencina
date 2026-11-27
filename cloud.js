@@ -1,7 +1,7 @@
 /* Шар Firebase: вхід через Google і Firestore. Офіційний SDK з gstatic, версія зафіксована. */
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.18.0/firebase-app.js';
 import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/12.18.0/firebase-auth.js';
-import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, doc, getDoc, setDoc, updateDoc, addDoc, deleteDoc, getDocs, arrayUnion, query, where, collection, onSnapshot, serverTimestamp } from 'https://www.gstatic.com/firebasejs/12.18.0/firebase-firestore.js';
+import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, doc, getDoc, setDoc, updateDoc, addDoc, deleteDoc, getDocs, getDocsFromCache, Timestamp, arrayUnion, query, where, collection, onSnapshot, serverTimestamp } from 'https://www.gstatic.com/firebasejs/12.18.0/firebase-firestore.js';
 
 const firebaseConfig = {
   apiKey: 'AIzaSyDdKFk4dMekeIxn59bt_e3cOIUR9R6SxxE',
@@ -73,7 +73,25 @@ window.Cloud = {
   onUser(cb) { return onAuthStateChanged(auth, cb); },
   signIn() { const p = new GoogleAuthProvider(); p.setCustomParameters({ prompt: 'select_account' }); return signInWithPopup(auth, p); },
   signOut() { return signOut(auth); },
-  async loadLessons() { const snap = await getDocs(collection(db, 'lessons')); return snap.docs.map(d => ({ id: d.id, ...d.data() })); },
+  /** уроки: повністю — раз на 7 днів або якщо локальна копія неповна; інакше з бази лише змінені після останнього разу
+     (решта — з копії Firestore на пристрої). Економить ~50 читань на кожен запуск. lessonReads — скільки прочитано з бази. */
+  lessonReads: 0,
+  async loadLessons() {
+    const col = collection(db, 'lessons'), KEY = 'sk.lessonsSync', mapD = d => ({ id: d.id, ...d.data() });
+    const ms = d => (d.updatedAt && d.updatedAt.toMillis ? d.updatedAt.toMillis() : 0);
+    const keep = (docs, full) => { try { localStorage.setItem(KEY, JSON.stringify({ n: docs.length, at: Math.max(0, ...docs.map(ms)), full })); } catch (e) { } };
+    const fullLoad = async () => { const s = await getDocs(col); const docs = s.docs.map(mapD); if (!s.metadata.fromCache) keep(docs, Date.now()); this.lessonReads = docs.length; return docs; };
+    let meta = null; try { meta = JSON.parse(localStorage.getItem(KEY) || 'null'); } catch (e) { }
+    if (!meta || !meta.at || !meta.n || Date.now() - (meta.full || 0) > 7 * 86400000) return fullLoad();
+    try {
+      const cached = (await getDocsFromCache(col)).docs.map(mapD);
+      if (cached.length < meta.n) return fullLoad();
+      const fresh = await getDocs(query(col, where('updatedAt', '>=', Timestamp.fromMillis(meta.at))));
+      if (fresh.metadata.fromCache) return cached;
+      const byId = {}; cached.forEach(d => { byId[d.id] = d; }); fresh.docs.forEach(d => { byId[d.id] = mapD(d); });
+      const docs = Object.values(byId); keep(docs, meta.full); this.lessonReads = Math.max(1, fresh.size); return docs;
+    } catch (e) { return fullLoad(); }
+  },
   saveLesson(L) {
     return setDoc(doc(db, 'lessons', L.id), { json: JSON.stringify(L), track: L.track, num: L.num, title: L.title, schema: 1, updatedBy: auth.currentUser.email, updatedAt: serverTimestamp() });
   },
