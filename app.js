@@ -35,7 +35,7 @@ const V_TOPICS = { 1: 'Абетка, вимова, знайомство', 2: 'М
 const DIA = ['á', 'ä', 'č', 'ď', 'é', 'í', 'ĺ', 'ľ', 'ň', 'ó', 'ô', 'ŕ', 'š', 'ť', 'ú', 'ý', 'ž'];
 const SRS_IV = [0, 1, 2, 4, 8, 16, 32];
 const DAILY_CARDS = 15; // карток у сесії на сьогодні
-const APP_VERSION = '3.5 (28.11)';
+const APP_VERSION = '3.6 (28.11)';
 
 /* ---------- іконки (власні константи) ---------- */
 const I = {
@@ -56,6 +56,7 @@ const I = {
   link: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 14l4-4M9 7l2-2a4 4 0 0 1 6 6l-2 2M15 17l-2 2a4 4 0 0 1-6-6l2-2"/></svg>',
   eye: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>',
   eyeoff: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.6 5.1A10.6 10.6 0 0 1 12 5c6.4 0 10 7 10 7a17 17 0 0 1-2.7 3.6M6.6 6.6C3.7 8.4 2 12 2 12s3.6 7 10 7a9.6 9.6 0 0 0 5.4-1.6"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2M3 3l18 18"/></svg>',
+  help: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9.5"/><path d="M9.3 9.2a2.8 2.8 0 0 1 5.4 1c0 1.9-2.7 2.5-2.7 4.1"/><path d="M12 17.6h.01"/></svg>',
   chart: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M21 20H3"/></svg>',
   users: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.6-3.6 3.3-5.5 6.5-5.5s5.9 1.9 6.5 5.5"/><path d="M16 4.6a3.4 3.4 0 0 1 0 6.8M18.5 14.8c1.7.8 2.8 2.6 3 5.2"/></svg>',
   gear: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M5 19l2-2M17 7l2-2"/></svg>',
@@ -391,12 +392,12 @@ function render() {
 const NAV = [
   ['today', 'Сьогодні', 'home', true], ['lessons', 'Уроки', 'path', true], ['cards', 'Картки', 'cards', true], ['cheats', 'Шпаргалки', 'sheet', true],
   ['sent', 'Тренажер речень', 'sent'], ['trainer', 'Тренажер форм', 'trainer'], ['det', 'Визначник', 'det'], ['mistakes', 'Помилки', 'redo'], ['reading', 'Читання', 'book'],
-  ['texts', 'Мої тексти', 'pen'], ['phrases', 'Фрази', 'chat'], ['eslovak', 'e-slovak', 'link'], ['add', 'Додати урок', 'plus'], ['people', 'Учасники', 'users'], ['analytics', 'Аналітика', 'chart'], ['more', 'Налаштування', 'gear']
+  ['texts', 'Мої тексти', 'pen'], ['phrases', 'Фрази', 'chat'], ['eslovak', 'e-slovak', 'link'], ['add', 'Додати урок', 'plus'], ['people', 'Учасники', 'users'], ['analytics', 'Аналітика', 'chart'], ['help', 'Довідка', 'help'], ['more', 'Налаштування', 'gear']
 ];
 /** пункти меню з урахуванням ролі: «Додати урок» — редакторам, «Учасники» — адміну (у хмарі) */
 const navItems = () => NAV.filter(([r]) => (r !== 'add' || canEdit() || !CLOUD) && (!['people', 'analytics'].includes(r) || (CLOUD && isAdmin())));
 /** службові пункти — внизу бічного меню, окремо від навчальних */
-const NAV_TAIL = ['people', 'analytics', 'more'];
+const NAV_TAIL = ['people', 'analytics', 'help', 'more'];
 function renderNav(cur) {
   const navLink = ([r, label, ic]) => h('a', { class: 'nav' + (active === r ? ' on' : ''), href: '#' + r }, icon(ic), label, r === 'mistakes' && mistakeCount() ? h('span', { class: 'badge' }, mistakeCount()) : null);
   const map = { lesson: 'lessons', cheat: 'cheats', read: 'reading', text: 'texts', howto: 'add', person: 'people' };
@@ -626,7 +627,7 @@ function feedback(it, res) {
   if (first) {
     const body = $('#pl-body'), field = body && body.querySelector('#ans, #detans, textarea'), badOpt = body && (body.querySelector('.opt.bad span[lang]') || body.querySelector('.opt.bad'));
     const ua = res.status === 'ok' ? '' : (res.user || (field && field.value) || (badOpt && badOpt.textContent) || '');
-    track('ans', { k: it.mkey || (it.task && it.task.sid ? 'sent:' + it.task.sid : ''), l: it.L ? it.L.id : '', y: (it.task && it.task.t) || it.type, st: res.status, ms: PL.shownAt ? Date.now() - PL.shownAt : 0, u: ua, h: it._hint ? 1 : 0, c: it._cheat ? 1 : 0, rt: it.retry ? 1 : 0, mi: it.fromMistakes ? 1 : 0, mn: it.mini ? 1 : 0, sk: PL.resumeKey });
+    track('ans', { k: it.mkey || (it.task && it.task.sid ? 'sent:' + it.task.sid : ''), l: it.L ? it.L.id : '', y: /:q\d+$/.test(it.mkey || '') ? 'read' : (it.task && it.task.t) || it.type, st: res.status, ms: PL.shownAt ? Date.now() - PL.shownAt : 0, u: ua, h: it._hint ? 1 : 0, c: it._cheat ? 1 : 0, rt: it.retry ? 1 : 0, mi: it.fromMistakes ? 1 : 0, mn: it.mini ? 1 : 0, sk: PL.resumeKey });
   }
   sfx(res.status);
   if (it.task && it.task.sid && res.status !== 'bad') { S.sent = S.sent || {}; S.sent[it.task.sid] = today(); }
@@ -1801,11 +1802,11 @@ VIEWS.eslovak = main => {
 };
 
 VIEWS.more = main => {
-  main.append(h('div', { class: 'stack', style: 'max-width:760px' }, h('h1', null, 'Ще'),
-    h('div', { class: 'card' }, h('div', { class: 'list' }, navItems().filter(n => !n[3] && n[0] !== 'more').map(([r, label, ic]) => h('a', { class: 'li', href: '#' + r, style: 'text-decoration:none;color:inherit' }, h('span', { class: 'ico g', html: I[ic] }), h('span', { class: 'b grow' }, label), r === 'mistakes' && mistakeCount() ? h('span', { class: 'badge' }, mistakeCount()) : null)))),
-    h('h2', null, 'Налаштування'),
-    h('div', { class: 'card' },
-      h('div', { class: 'spread' }, h('span', null, 'Профіль: ', h('b', null, NAMES[PROFILE]), CLOUD && window.Cloud ? ' (' + (window.Cloud.email || '') + ')' : '', roleOf(PROFILE) ? ' · ' + ROLE_UA[roleOf(PROFILE)] : ''), h('button', { class: 'btn ghost small', onclick: switchProfile }, CLOUD ? 'Вийти' : 'Змінити')),
+  main.append(h('div', { class: 'stack', style: 'max-width:760px' }, h('h1', { class: 'morenav' }, 'Ще'),
+    h('div', { class: 'card morenav' }, h('div', { class: 'list' }, navItems().filter(n => !n[3] && n[0] !== 'more').map(([r, label, ic]) => h('a', { class: 'li', href: '#' + r, style: 'text-decoration:none;color:inherit' }, h('span', { class: 'ico g', html: I[ic] }), h('span', { class: 'b grow' }, label), r === 'mistakes' && mistakeCount() ? h('span', { class: 'badge' }, mistakeCount()) : null)))),
+    h('h2', { class: 'settings-h' }, 'Налаштування'),
+    h('div', { class: 'card settings' },
+      h('div', { class: 'spread' }, h('div', { class: 'col', style: 'gap:2px;min-width:0' }, h('span', null, 'Профіль: ', h('b', null, NAMES[PROFILE]), roleOf(PROFILE) ? ' · ' + ROLE_UA[roleOf(PROFILE)] : ''), CLOUD && window.Cloud && window.Cloud.email ? h('span', { class: 'tiny muted', style: 'overflow-wrap:anywhere' }, window.Cloud.email) : null), h('button', { class: 'btn ghost small', onclick: switchProfile }, CLOUD ? 'Вийти' : 'Змінити')),
       CLOUD ? h('div', { class: 'spread' }, h('span', null, 'Синхронізація: ', h('b', null, { ok: 'збережено', saving: 'зберігаю…', err: 'помилка (' + SYNC.err + ')', local: 'очікує' }[SYNC.state] || SYNC.state)), h('button', { class: 'btn ghost small', onclick: () => { pushCloud(); toast('Зберігаю…'); } }, 'Зберегти зараз')) : null,
       h('div', { class: 'spread' }, h('span', null, 'Я вчу: ', h('b', null, 'уроки з ' + focusNum() + '-го')), h('button', { class: 'btn ghost small', onclick: chooseFocus }, 'Змінити')),
       !onCourse() ? null : h('div', { class: 'spread' }, h('span', null, 'Курс зараз на уроці: ', h('b', null, courseNum())), canEdit() || !CLOUD ? h('button', { class: 'btn ghost small', onclick: chooseCourse }, 'Змінити') : null),
@@ -1940,7 +1941,7 @@ function notifyCard() {
   const chk = (on, fn, label) => h('label', { class: 'row', style: 'gap:10px;align-items:center;cursor:pointer' }, h('input', { type: 'checkbox', checked: !!on, style: 'width:22px;height:22px;accent-color:var(--green)', onchange: e => fn(e.target.checked) }), h('span', null, label));
   const tIn = h('input', { type: 'time', class: 'txt', step: 300, value: NT.daily, 'aria-label': 'Час щоденного нагадування', style: 'width:130px;padding:8px 10px', disabled: !NT.dailyOn || !NT.on, onchange: e => { if (e.target.value) ntSet({ daily: e.target.value }); toast('Щоденне нагадування о ' + e.target.value); } });
   const cSel = h('select', { class: 'txt', 'aria-label': 'За скільки хвилин', style: 'width:130px;padding:8px 10px', disabled: !NT.cls || !NT.on, onchange: e => { ntSet({ cls: +e.target.value }); toast('Нагадування за ' + e.target.value + ' хв до заняття'); } }, [15, 30, 60, 90, 120].map(m => h('option', { value: m, selected: m === (NT.cls || 60) }, m < 60 ? m + ' хв' : m === 60 ? '1 год' : m === 90 ? '1,5 год' : '2 год')));
-  return h('div', { class: 'card' }, h('h3', null, 'Сповіщення'),
+  return h('div', { class: 'card settings' }, h('div', { class: 'spread wrap' }, h('h3', null, 'Сповіщення'), h('a', { class: 'small b', href: '#help-notif' }, 'Як налаштувати')),
     !sup ? h('p', { class: 'small muted' }, 'Цей браузер не підтримує сповіщення. На iPhone вони запрацюють пізніше, через «На екран Додому».') :
       h('div', { class: 'spread' }, h('span', null, 'Цей пристрій (' + devLabel() + '): ', h('b', null, here ? 'увімкнено' : 'вимкнено')), h('button', { class: 'btn small ' + (here ? 'ghost' : ''), onclick: here ? ntDisableHere : ntEnableHere }, here ? 'Вимкнути тут' : 'Увімкнути тут')),
     denied ? h('div', { class: 'note small' }, 'Браузер заблокував сповіщення для цього сайту. Дозволь їх у налаштуваннях сайту (значок біля адреси → Сповіщення → Дозволити), потім натисни «Увімкнути тут».') : null,
@@ -2028,10 +2029,106 @@ function saveLessonEverywhere(L) {
   const list = (Store.get('lessons.local', []) || []).filter(x => x.id !== L.id); list.push(L); Store.set('lessons.local', list); storeContent(L); return Promise.resolve();
 }
 
+/* ---------- «Довідка» ----------
+   Розділи — масив { id, t: заголовок, b: блоки }. Блок: рядок (абзац, **жирний**), ['ul', ...пункти] або ['note', текст].
+   Посилання на розділ: #help-<id>. Пошук шукає по заголовку й тексту. */
+function helpSections() {
+  const course = onCourse() || !CLOUD, ed = canEdit() || !CLOUD;
+  return [
+    { id: 'start', t: 'Як займатися щодня', b: [
+      'Головне — **«Сесія на сьогодні»** на головній сторінці, кнопка «Почати». Зазвичай 20–30 хвилин.',
+      ['ul', '**Картки на повтор** — до 15 слів, спершу ті, що чекають найдовше.', '**Один день граматики** й **один день лексики** з уроку, який ти вчиш.', 'На початку кожного нового дня — **міні-повтор**: 4 вправи з днів, які ти пройшов 1–3 дні тому.'],
+      'Сесію можна перервати будь-коли: прогрес збережеться, а кнопка «Продовжити» почне з того ж завдання — навіть на іншому пристрої.',
+      'Коли сесію на сьогодні пройдено, на головній з\'являється «На сьогодні все». Можна займатися далі: картки, тренажери, будь-який день у «Уроках».'] },
+    { id: 'lessons', t: 'Уроки, дні й «Я вчу»', b: [
+      'Кожен урок граматики й лексики — це **7 днів**: 5 днів з новим матеріалом і 2 дні повторення. Дні повторення змішують вправи цього уроку, його слова і твої помилки з інших уроків.',
+      '**«Я вчу: уроки з N-го»** (на головній і в «Ще») — з якого уроку «Сесія на сьогодні» бере дні граматики й лексики. Наприклад, 10 — це уроки десятого тижня курсу. Попередні уроки лишаються в «Уроках», їх можна пройти будь-коли.',
+      course ? '**«Курс зараз: урок N»** — де група на заняттях. Від цього числа залежать розминка перед заняттям і те, які слова бере тренажер форм. ' + (ed ? 'Змінюють його Діма й Наташа (і ти теж).' : 'Змінюють його Діма й Наташа.') : null,
+      'Будь-який день відкривається в «Уроки» → урок → номер дня.'] },
+    { id: 'check', t: 'Як перевіряються відповіді', b: [
+      ['ul', '**Не важливі:** великі чи малі літери, зайві пробіли, крапка чи знак питання в кінці.', '**Важлива діакритика.** Якщо все правильно, крім рисок і гачків (á, č, ľ, ô…), буде **«Майже»** з підсвіченим місцем. Таке завдання теж іде в «Помилки».', '**Одруківка** навіть в одній літері — це «Не зовсім». Наприклад, «moij» замість «moji».'],
+      'Переклад речення часто має кілька правильних варіантів. Якщо твій правильний, а платформа його не прийняла, натисни **«Мій варіант теж правильний»**: відповідь зарахується, і цей варіант запам\'ятається для цього завдання. Якщо сумніваєшся — краще спитай викладачку, ніж зараховувати помилку.'] },
+    { id: 'hints', t: 'Підказки, шпаргалки й переклад слів', b: [
+      ['ul', '**Синя плашка** у вправі з пропуском — переклад слова, яке треба вставити, і число (однина чи множина), якщо з речення його не видно.', '**«Підказка»** — словацьке слово й переклад усього речення. Відкривай, коли справді застряг: самостійна спроба запам\'ятовується краще.', '**«Шпаргалка»** вгорі під час вправи — правило цього уроку.'],
+      '**Переклад по дотику.** Натисни будь-яке слово в реченні завдання, у правильній відповіді чи в тексті уроку — з\'явиться переклад і кнопка озвучки. Якщо поруч написано «(форма від …)», платформа сама вгадала початкову форму слова: тут можливі неточності.',
+      'У тій самій плашці є **«+ в картки»** (слово піде в «Мої слова») і **«Виправити»** (твій переклад замість платформного — бачиш лише ти; «Повернути як було» скасовує).'] },
+    { id: 'cards', t: 'Картки й «Мої слова»', b: [
+      'Нові слова з\'являються в днях уроків. Далі вони повертаються з інтервалами: **«Не згадав»** — завтра, **«Згадав»** — через 2, 4, 8, 16, а потім 32 дні. Що краще знаєш слово, то рідше воно трапляється.',
+      'У «Сесії на сьогодні» до 15 карток. Якщо чекає більше, на головній з\'являється плашка **«Понад сесію ще N карток»** з кнопкою «Повторити 20» — тисни скільки хочеш.',
+      'Сторінка **«Картки»**: усі слова по уроках з рівнями, «Пройти всі» або «Пройти 25 найслабших».',
+      '**«Мої слова»** — те, що ти додав сам через «+ в картки». Вони повторюються так само, а видалити слово можна хрестиком у списку.'] },
+    { id: 'mistakes', t: 'Помилки', b: [
+      'Неправильна відповідь або «Майже» потрапляє в розділ **«Помилки»**.',
+      ['ul', 'За замовчуванням неправильна відповідь **повторюється в кінці сесії**. Відповів правильно — в «Помилки» вона не йде.', 'Якщо хочеш, щоб помилки одразу лишались у «Помилках», вимкни повтор: «Ще» → **«Повтор помилок у кінці сесії»**.', 'Помилка зникає, коли ти правильно відповіси на те саме завдання — будь-де: у «Помилках», у дні повторення чи в розминці.'],
+      'Помилки повертаються в днях повторення й розминці, а розділ «Помилки» дає 15 випадкових за раз.'] },
+    { id: 'tools', t: 'Тренажери й інші розділи', b: [
+      ['ul', '**Тренажер форм** — відмінки іменників і дієслова в теперішньому, минулому й майбутньому часі. Можна вибрати, які відмінки, число й часи тренувати. Бере лише слова з уроків, які вже пройшов курс або ти.', '**Тренажер речень** — переклад українських речень словацькою, 5 рівнів складності по 100 речень. Спершу дає ті, які ти ще не розв\'язав.', '**Визначник** — покроково: рід, істота чи ні, взор, відмінок, і лише потім форма слова. Допомагає зрозуміти, чому закінчення саме таке.', '**Читання** — тексти уроків абзацами: переклад за кнопкою, слово за дотиком.', '**Мої тексти** — твої домашні розповіді після перевірки. Перечитуй їх перед заняттям.', '**Фрази** — готові фрази з озвучкою й кнопкою «Копіювати».', '**Шпаргалки** — правила всіх уроків на одному екрані.', '**e-slovak** — посилання на блоки, які задала викладачка.']] },
+    course ? { id: 'classes', t: 'Заняття й розминка', b: [
+      'Розклад курсу: **граматика — у вівторок, лексика — у середу, о 17:00**. Найближче заняття — у картці на головній.',
+      'Приблизно за добу до заняття в картці з\'являється **«Розминка»** (~5 хв): вправи уроку, твої помилки, кілька слів і фраза вголос.',
+      ed ? 'Переносити заняття можуть **Діма й Наташа**: «перенести» в картці заняття. Перенесення одразу бачать усі, а нагадування його враховують. Там же — «Історія занять».' : 'Якщо заняття перенесли, це одразу видно в картці, а нагадування приходять на новий час. Переносять заняття Діма й Наташа.'] } : null,
+    { id: 'streaks', t: 'Вогники й активність', b: [
+      '**Вогник** — скільки днів поспіль ти завершив хоча б одну сесію (будь-яку: сесію на сьогодні, картки, тренажер). Пропустив день — рахунок починається знову.',
+      '**«Активність за 2 тижні»** — кожен заповнений квадрат означає день, коли була сесія.',
+      'Вогники й календар учасників курсу бачать усі учасники курсу. Вогники глядачів бачить лише Діма.'] },
+    { id: 'notif', t: 'Сповіщення', b: [
+      ['ul', '«Ще» → **«Сповіщення»** → «Увімкнути». Це треба зробити **на кожному пристрої окремо** й дозволити сповіщення, коли браузер спитає.', '**Щоденне нагадування** приходить о вибраній годині. Якщо сесію на сьогодні вже пройдено — не приходить.', course ? '**Про заняття** — за вибрану кількість хвилин до початку. Перенесення враховуються.' : null, '**«Тест»** — пробне сповіщення протягом хвилини.', '«Вимкнути всі сповіщення» — тимчасово вимикає все, налаштування зберігаються.'],
+      ['note', '**Немає вібрації на Android?** Налаштування телефону → Застосунки → Chrome (або встановлений застосунок «slovenčina») → Сповіщення → канал цього сайту → увімкни вібрацію. Android ігнорує вібрацію, яку просить сайт, — вона налаштовується лише там.'],
+      'Якщо браузер **заблокував** сповіщення: натисни значок замка біля адреси сайту → Сповіщення → Дозволити.',
+      'Якщо нагадування не приходять: зроби «Тест»; перевір, чи телефон не в режимі економії заряду для Chrome; на iPhone сповіщення поки не підтримуються (версія для iPhone в роботі).'] },
+    { id: 'install', t: 'Встановити як застосунок', b: [
+      'Платформа працює в браузері, але її можна поставити як звичайний застосунок: відкривається на весь екран, швидше, і сповіщення надійніші.',
+      ['ul', '**Android (Chrome):** меню ⋮ → «Додати на головний екран» або «Встановити застосунок».', '**Комп\'ютер (Chrome чи Edge):** значок встановлення праворуч в адресному рядку.', '**iPhone чи iPad (Safari):** «Поділитися» → «На екран «Додому»». Версію для iPhone ще доробляємо, тож можливі дрібні незручності.']] },
+    { id: 'sync', t: 'Кілька пристроїв, інтернет і оновлення', b: [
+      ['ul', 'Прогрес зберігається в хмарі. Заходь **тим самим акаунтом Google** — і все буде однаковим на телефоні й комп\'ютері.', 'Незавершену сесію можна продовжити на іншому пристрої.', 'Без інтернету займатися можна: зміни відправляться, щойно з\'явиться зв\'язок.', 'Стан збереження видно в «Ще» → «Синхронізація»; «Зберегти зараз» відправляє примусово.'],
+      '**Оновлення** приходять самі. Якщо не бачиш змін, про які казав Діма, закрий застосунок повністю (змахни з недавніх) і відкрий знову. Номер версії — внизу сторінки «Ще».'] },
+    { id: 'data', t: 'Які дані збираються і навіщо', b: [
+      '**Твій прогрес** — пройдені дні, картки, помилки, «Мої слова», налаштування. Він потрібен, щоб усе працювало однаково на всіх твоїх пристроях. Іншим учасникам видно лише твій вогник і календар активності.',
+      '**Статистика використання** — її бачить **лише Діма**, щоб покращувати платформу. Що в ній:',
+      ['ul', 'які розділи ти відкриваєш і скільки часу займаєшся;', 'які сесії почав, закінчив чи кинув і на якому завданні;', 'чи правильна відповідь, скільки секунд ти думав, чи відкривав підказку чи шпаргалку;', '**текст відповіді — лише для неправильних і «Майже»**: так видно завдання, де перевірка надто сувора або підказка незрозуміла;', 'які слова ти натискаєш і що додаєш у «Мої слова»;', 'які кнопки натискаєш (без варіантів відповідей у вправах);', 'тип пристрою й браузера, версія платформи та збої, якщо вони трапились.'],
+      '**Не збирається:** тексти правильних відповідей, паролі, контакти, місцезнаходження. Дані лежать у базі Firebase цього проєкту й нікому не передаються. Питання — до Діми.'] },
+    { id: 'faq', t: 'Часті питання', b: [
+      ['ul', '**Відповідь правильна, а не зарахувало.** Перевір діакритику й одруківки. Якщо варіант справді правильний — «Мій варіант теж правильний».', '**Випадково натиснув «Мій варіант теж правильний».** Напиши Дімі, яке це було завдання, — він прибере варіант.', '**«Сьогодні» дає не той урок.** Головна → «Я вчу» → «змінити».', '**Не прийшло нагадування.** Див. розділ «Сповіщення»: «Тест», дозвіл у браузері, економія заряду.', '**Не бачу прогрес на іншому пристрої.** Перевір, що це той самий акаунт Google, і подивись «Ще» → «Синхронізація».', '**Як вийти з акаунта.** «Ще» → «Профіль» → «Вийти».']] },
+    { id: 'contact', t: 'Щось не працює?', b: [
+      'Напиши Дімі: що ти робив, що очікував і що сталося. Скріншот дуже допомагає. Платформа ще й сама записує збої, тож часто Діма побачить проблему раніше.'] }
+  ].filter(Boolean);
+}
+function helpBlock(b) {
+  if (!b) return null;
+  if (typeof b === 'string') return h('p', null, rich(b));
+  if (b[0] === 'ul') return h('ul', null, b.slice(1).filter(Boolean).map(x => h('li', null, rich(x))));
+  if (b[0] === 'note') return h('div', { class: 'note small' }, rich(b[1]));
+  return null;
+}
+VIEWS.help = (main, open) => {
+  const secs = helpSections();
+  const plain = x => String(x || '').replace(/\*\*/g, '').toLowerCase();
+  const items = secs.map(sec => {
+    const text = plain(sec.t + ' ' + sec.b.flat(2).filter(x => typeof x === 'string').join(' '));
+    const det = h('details', { class: 'hsec', id: 'help-' + sec.id, open: open === sec.id ? true : null }, h('summary', null, h('span', null, sec.t), icon('back')), h('div', { class: 'hbody' }, sec.b.map(helpBlock)));
+    return { sec, text, det };
+  });
+  const none = h('p', { class: 'muted', hidden: true }, 'Нічого не знайдено. Спробуй інше слово або напиши Дімі.');
+  const q = h('input', { class: 'txt', type: 'search', placeholder: 'Пошук: наприклад, вібрація, діакритика, картки', 'aria-label': 'Пошук у довідці', autocomplete: 'off' });
+  q.addEventListener('input', () => {
+    /* шукаємо за основою: «вібрація» знайде «вібрацію», «картки» — «карток» */
+    const words = plain(q.value).split(/\s+/).filter(Boolean).map(w => w.length > 5 ? w.slice(0, w.length - 2) : w.length > 3 ? w.slice(0, w.length - 1) : w); let n = 0;
+    items.forEach(it => { const hit = !words.length || words.every(w => it.text.includes(w)); it.det.hidden = !hit; if (hit) n++; it.det.open = words.length ? hit : it.sec.id === open; });
+    none.hidden = n > 0;
+  });
+  main.append(h('div', { class: 'stack', style: 'max-width:760px' }, h('h1', null, 'Довідка'),
+    h('p', { class: 'muted', style: 'margin-top:-6px' }, 'Як усе влаштовано і що робити, якщо щось не так.'), q, none,
+    h('div', { class: 'helplist' }, items.map(it => it.det)),
+    h('p', { class: 'tiny muted' }, 'Версія ' + (CLOUD ? APP_VERSION : 'пілот') + '.')));
+  if (open) setTimeout(() => { const el = document.getElementById('help-' + open); if (el) el.scrollIntoView({ block: 'start' }); }, 30);
+};
+
 /* ---------- сторінка «Аналітика» (лише адмін) ---------- */
 const AN_ROUTES = { today: 'Сьогодні', lessons: 'Уроки', lesson: 'Урок', cards: 'Картки', cheats: 'Шпаргалки', cheat: 'Шпаргалка', sent: 'Тренажер речень', trainer: 'Тренажер форм', det: 'Визначник', mistakes: 'Помилки', reading: 'Читання', read: 'Текст уроку', texts: 'Мої тексти', text: 'Мій текст', phrases: 'Фрази', eslovak: 'e-slovak', add: 'Додати урок', howto: 'Як додати урок', people: 'Учасники', analytics: 'Аналітика', more: 'Ще', 'сесія': 'У сесії' };
 const AN_EV = { tap: 'Переклад слова по дотику', myc: '«+ в картки»', fxg: '«Виправити» переклад', own: '«Мій варіант теж правильний»', hint: 'Відкрив підказку до відповіді', cheat: 'Відкрив шпаргалку', fl: 'Картки (відповідей)' };
 const anDayL = ds => { const dt = new Date(+ds.slice(0, 4), +ds.slice(5, 7) - 1, +ds.slice(8, 10)); return UA_DAYS[dt.getDay()] + ' ' + dt.getDate() + '.' + ds.slice(5, 7); };
+const AN_TYPES = { choice: 'Вибір варіанта', input: 'Вписати слово', build: 'Скласти речення', tr: 'Переклад', dict: 'Диктант', match: 'Пари слів', det: 'Визначник', speak: 'Прочитай уголос', flash: 'Картки', learn: 'Нові слова', read: 'Питання до тексту' };
+const anType = y => AN_TYPES[y] || y || '—';
 const anRoute = r => AN_ROUTES[String(r || '').split('-')[0]] || r || '—';
 function anKind(k) {
   if (!k) return '—'; if (k === 'today') return 'Сесія на сьогодні';
@@ -2054,7 +2151,7 @@ function anTask(k) {
 /** активний час: сума проміжків між сусідніми подіями, якщо проміжок ≤ 5 хв */
 function anActiveSec(evs) { let s = 0; for (let i = 1; i < evs.length; i++) { const g = (evs[i].t - evs[i - 1].t) / 1000; if (g > 0 && g <= 300) s += g; } return s; }
 function anLoad(days, force) {
-  const from = addDays(today(), -(days - 1));
+  const from = days === 'all' ? '2000-01-01' : addDays(today(), -(days - 1));
   if (!force && AN.cache && AN.cache.from <= from && Date.now() - AN.cache.at < 5 * 60000) return Promise.resolve(AN.cache.docs);
   flushAn();
   return window.Cloud.loadEvents(from).then(docs => { AN.cache = { from, at: Date.now(), docs }; return docs; });
@@ -2086,16 +2183,25 @@ const anWhen = t => { if (!t) return '—'; const d = new Date(t), ds = dstr(d);
 const pct = (a, b) => b ? Math.round(100 * a / b) + '%' : '—';
 /** стовпчики «хвилини по днях»: один колір, підказка при наведенні/фокусі з розкладом по людях */
 function anBars(dayList, U) {
-  const vals = dayList.map(d => Object.values(U).reduce((a, u) => a + (u.byDay[d] || 0), 0)), max = Math.max(10, ...vals);
+  /* до 60 днів — стовпчик на день; більше — на тиждень (з понеділка) */
+  const weekly = dayList.length > 60, buckets = [];
+  dayList.forEach(d => {
+    if (!weekly) { buckets.push({ lab: d.slice(8) + '.' + d.slice(5, 7), title: anDayL(d), keys: [d] }); return; }
+    const dt = new Date(+d.slice(0, 4), +d.slice(5, 7) - 1, +d.slice(8, 10)), mon = addDays(d, -((dt.getDay() + 6) % 7));
+    const last = buckets[buckets.length - 1];
+    if (last && last.mon === mon) last.keys.push(d); else buckets.push({ mon, lab: mon.slice(8) + '.' + mon.slice(5, 7), title: 'тиждень з ' + anDayL(mon), keys: [d] });
+  });
+  const sum = (u, b) => b.keys.reduce((a, k) => a + (u.byDay[k] || 0), 0);
+  const vals = buckets.map(b => Object.values(U).reduce((a, u) => a + sum(u, b), 0)), max = Math.max(10, ...vals);
   const nice = Math.ceil(max / 10) * 10;
   const tip = h('div', { class: 'ctip', hidden: true, role: 'status' });
-  const show = (i, el) => { const d = dayList[i]; const per = Object.values(U).map(u => [u.name, u.byDay[d] || 0]).filter(x => x[1] > 0).sort((a, b) => b[1] - a[1]);
-    tip.replaceChildren(h('b', null, anDayL(d) + ': ' + vals[i] + ' хв'), ...per.map(([n, m]) => h('div', { class: 'tiny' }, n + ' — ' + m + ' хв'))); tip.hidden = false;
-    const r = el.getBoundingClientRect(), pr = wrap.getBoundingClientRect(); tip.style.left = Math.min(Math.max(0, r.left - pr.left + r.width / 2 - 70), pr.width - 150) + 'px'; };
-  const step = dayList.length <= 14 ? 1 : 5;
-  const bars = h('div', { class: 'bars' }, dayList.map((d, i) => h('div', { class: 'bcol' },
-    h('div', { class: 'bar' + (vals[i] ? '' : ' zero'), style: 'height:' + (vals[i] ? Math.max(2, 100 * vals[i] / nice) : 0) + '%', tabindex: 0, role: 'img', 'aria-label': anDayL(d) + ': ' + vals[i] + ' хвилин', onmouseenter: e => show(i, e.currentTarget), onfocus: e => show(i, e.currentTarget), onmouseleave: () => { tip.hidden = true; }, onblur: () => { tip.hidden = true; } }),
-    h('span', { class: 'bx' }, (i % step === 0 || i === dayList.length - 1) ? d.slice(8) + '.' + d.slice(5, 7) : ''))));
+  const show = (i, el) => { const b = buckets[i]; const per = Object.values(U).map(u => [u.name, sum(u, b)]).filter(x => x[1] > 0).sort((a, c) => c[1] - a[1]);
+    tip.replaceChildren(h('b', null, b.title + ': ' + vals[i] + ' хв'), ...per.map(([n, m]) => h('div', { class: 'tiny' }, n + ' — ' + m + ' хв'))); tip.hidden = false;
+    const r = el.getBoundingClientRect(), pr = wrap.getBoundingClientRect(); tip.style.left = Math.min(Math.max(0, r.left - pr.left + r.width / 2 - 75), pr.width - 150) + 'px'; };
+  const step = buckets.length <= 14 ? 1 : Math.ceil(buckets.length / 10);
+  const bars = h('div', { class: 'bars' }, buckets.map((b, i) => h('div', { class: 'bcol' },
+    h('div', { class: 'bar' + (vals[i] ? '' : ' zero'), style: 'height:' + (vals[i] ? Math.max(2, 100 * vals[i] / nice) : 0) + '%', tabindex: 0, role: 'img', 'aria-label': b.title + ': ' + vals[i] + ' хвилин', onmouseenter: e => show(i, e.currentTarget), onfocus: e => show(i, e.currentTarget), onmouseleave: () => { tip.hidden = true; }, onblur: () => { tip.hidden = true; } }),
+    h('span', { class: 'bx' }, (i % step === 0 || i === buckets.length - 1) ? b.lab : ''))));
   const wrap = h('div', { class: 'bchart' }, h('div', { class: 'grid' }, [nice, nice / 2, 0].map(v => h('div', { class: 'gl' }, h('span', null, v)))), bars, tip);
   return wrap;
 }
@@ -2107,13 +2213,15 @@ VIEWS.analytics = main => {
   const whoSel = h('select', { class: 'txt', style: 'max-width:200px;min-height:40px', 'aria-label': 'Чиї дані' }, h('option', { value: 'all' }, 'Усі'), Object.keys(NAMES).map(k => h('option', { value: k, selected: ui.who === k }, NAMES[k])));
   whoSel.addEventListener('change', () => { ui.who = whoSel.value; render(); });
   main.append(h('div', { class: 'stack', style: 'max-width:1100px' }, h('h1', null, 'Аналітика'),
-    h('div', { class: 'row wrap filters', style: 'gap:8px;align-items:center' }, chip(7, '7 днів'), chip(14, '14 днів'), chip(30, '30 днів'), whoSel,
+    h('div', { class: 'row wrap filters', style: 'gap:8px;align-items:center' }, chip(7, '7 днів'), chip(14, '14 днів'), chip(30, '30 днів'), chip('all', 'За весь час'), whoSel,
       h('button', { class: 'btn ghost small', onclick: () => { AN.cache = null; render(); } }, 'Оновити'),
       h('button', { class: 'btn ghost small', onclick: () => { const blob = new Blob([JSON.stringify((AN.cache && AN.cache.docs) || [], null, 1)], { type: 'application/json' }); const a = h('a', { href: URL.createObjectURL(blob), download: 'analytics-' + today() + '.json' }); document.body.append(a); a.click(); a.remove(); } }, 'Завантажити дані (JSON)')),
     body));
   anLoad(ui.days).then(docs => {
     if (ROUTE !== 'analytics') return;
-    const { U, dayList, all } = anAgg(docs, ui.days, ui.who), users = Object.values(U).sort((a, b) => b.mins - a.mins);
+    const first = docs.reduce((m, d) => d && d.day && d.day < m ? d.day : m, today());
+    const nDays = ui.days === 'all' ? Math.round((new Date(today() + 'T12:00') - new Date(first + 'T12:00')) / 86400000) + 1 : ui.days;
+    const { U, dayList, all } = anAgg(docs, nDays, ui.who), users = Object.values(U).sort((a, b) => b.mins - a.mins);
     const ev = e => all.filter(x => x.e === e);
     const ans = ev('ans'), ss = ev('ss').filter(x => !x.re), se = ev('se'), sx = ev('sx');
     const okAll = ans.filter(x => x.st === 'ok').length;
@@ -2125,7 +2233,7 @@ VIEWS.analytics = main => {
     sx.forEach(x => { const k = anKind(x.k); const o = kinds[k] = kinds[k] || { st: 0, fin: 0, ex: 0, pos: [] }; o.ex++; if (x.n) o.pos.push(Math.round(100 * (x.i || 0) / x.n)); });
     /* найважчі завдання */
     const byTask = {}; ans.filter(x => x.k).forEach(x => { const o = byTask[x.k] = byTask[x.k] || { n: 0, bad: 0, al: 0, ms: [], wrong: [] }; o.n++; if (x.st === 'bad') o.bad++; if (x.st === 'almost') o.al++; if (x.ms) o.ms.push(x.ms); if (x.st !== 'ok' && x.u && !o.wrong.includes(x.u)) o.wrong.push(x.u); });
-    const minN = ui.days >= 14 ? 3 : 2;
+    const minN = nDays >= 14 ? 3 : 2;
     const hard = Object.entries(byTask).filter(([, o]) => o.n >= minN && o.bad + o.al > 0).sort((a, b) => (b[1].bad + b[1].al) / b[1].n - (a[1].bad + a[1].al) / a[1].n || b[1].n - a[1].n).slice(0, 15);
     const typeStat = {}; ans.forEach(x => { const o = typeStat[x.y || '—'] = typeStat[x.y || '—'] || { n: 0, ok: 0, ms: [] }; o.n++; if (x.st === 'ok') o.ok++; if (x.ms) o.ms.push(x.ms); });
     const med = a => { if (!a.length) return '—'; const b = a.slice().sort((x, y) => x - y); return Math.round(b[Math.floor(b.length / 2)] / 1000) + ' с'; };
@@ -2137,27 +2245,34 @@ VIEWS.analytics = main => {
     featRows.push(['Розминка (сесій)', ...users.map(u => u.ev.filter(x => x.e === 'ss' && /Розминк/i.test(x.k || '')).length || '·')]);
     /* слова */
     const cnt = (arr, f) => { const m = {}; arr.forEach(x => { const k = f(x); if (k) m[k] = (m[k] || 0) + 1; }); return Object.entries(m).sort((a, b) => b[1] - a[1]); };
-    const taps = cnt(ev('tap'), x => String(x.w || '').toLowerCase()).slice(0, 20);
+    const taps = cnt(ev('tap'), x => String(x.w || '').toLowerCase()).slice(0, 24);
+    const tapWho = {}; ev('tap').forEach(x => { const w = String(x.w || '').toLowerCase(); (tapWho[w] = tapWho[w] || new Set()).add(x.who); });
+    /* додані в картки: яке слово натиснули перед цим (форма в реченні) і як зберегли */
+    const adds = ev('myc').sort((a, b) => b.t - a.t).map(x => { const prev = all.filter(y => y.e === 'tap' && y.who === x.who && y.t <= x.t && x.t - y.t < 180000).sort((a, b) => b.t - a.t)[0]; return { x, form: prev ? prev.w : '', n: (tapWho[String(prev ? prev.w : '').toLowerCase()] || new Set()).size }; });
+    const addedForms = new Set(adds.map(a => String(a.form).toLowerCase()));
     const views = {}; ev('view').forEach(x => { const r = anRoute(x.r); const o = views[r] = views[r] || { n: 0, who: new Set() }; o.n++; o.who.add(x.who); });
     const clicks = cnt(ev('click'), x => anRoute(x.r) + ' → ' + x.l).slice(0, 25);
     const errs = {}; ev('err').forEach(x => { const k = x.m + ' @ ' + (x.s || ''); const o = errs[k] = errs[k] || { n: 0, who: new Set(), v: '', t: 0 }; o.n++; o.who.add(NAMES[x.who] || x.who); if (x.t > o.t) { o.t = x.t; o.v = x.v || ''; } });
     const sec = (title, note, ...kids) => h('div', { class: 'card' }, h('h3', null, title), note ? h('p', { class: 'small muted', style: 'margin-top:-4px' }, note) : null, ...kids);
     body.replaceChildren(
-      h('div', { class: 'stats' }, tile(activeToday, 'активні сьогодні'), tile(users.filter(u => u.days).length, 'активні за ' + ui.days + ' дн.'), tile(users.reduce((a, u) => a + u.mins, 0), 'хвилин навчання'),
+      h('div', { class: 'stats' }, tile(activeToday, 'активні сьогодні'), tile(users.filter(u => u.days).length, ui.days === 'all' ? 'активні за весь час' : 'активні за ' + ui.days + ' дн.', ui.days === 'all' ? 'з ' + anDayL(first) : null), tile(users.reduce((a, u) => a + u.mins, 0), 'хвилин навчання'),
         tile(se.length + ' / ' + ss.length, 'сесій завершено / почато'), tile(pct(okAll, ans.length), 'правильних відповідей', ans.length + ' відповідей')),
-      sec('Хвилини навчання по днях', 'Активний час: проміжки між діями до 5 хвилин. Наведи на стовпчик, щоб побачити, хто скільки.', anBars(dayList, U)),
+      sec(dayList.length > 60 ? 'Хвилини навчання по тижнях' : 'Хвилини навчання по днях', 'Активний час: проміжки між діями до 5 хвилин. Наведи на стовпчик, щоб побачити, хто скільки.', anBars(dayList, U)),
       sec('Люди', 'Вогник і «сесія на сьогодні» — з прогресу; решта — за обраний період.', anTable(['Хто', 'Роль', 'Остання дія', 'Днів', 'Хв', 'Сесій', 'Кинуто', 'Відповідей', 'Точність', 'Вогник', 'Сьогодні', 'Пристрій', 'Версія'],
         users.map(u => { const st = stateOf(u.key); const o = u.open || {}; return [h('b', null, u.name), ROLE_UA[roleOf(u.key)] || '—', anWhen(u.last), u.days, u.mins, u.se + ' / ' + u.ss, u.sx || '·', u.ans, pct(u.ok, u.ans), st ? streakOf(st) : '—', st && st.daily && st.daily[today()] ? '✓ пройдена' : '—', o.plat ? o.plat + (o.pwa ? ', застосунок' : ', ' + o.br) : '—', u.v || '—']; }))),
       sec('Сесії', 'Скільки почали, закінчили й кинули. «Де кидають» — середня позиція виходу.', anTable(['Тип', 'Почато', 'Завершено', 'Кинуто', 'Де кидають'],
         Object.entries(kinds).sort((a, b) => b[1].st - a[1].st).map(([k, o]) => [k, o.st, o.fin, o.ex || '·', o.pos.length ? 'на ~' + Math.round(o.pos.reduce((a, b) => a + b, 0) / o.pos.length) + '%' : '—']))),
       sec('Найважчі завдання', 'Найвищий відсоток помилок (мінімум ' + minN + ' спроби). Кандидати на виправлення або кращу підказку.', anTable(['Де', 'Завдання', 'Правильно', 'Спроб', 'Помилок', 'Як помилялись'],
         hard.map(([k, o]) => { const t = anTask(k); return [h('span', { class: 'tiny' }, t.where), h('span', { lang: 'sk' }, t.txt), h('span', { lang: 'sk', class: 'tiny' }, t.ans || '—'), o.n, pct(o.bad + o.al, o.n), h('span', { lang: 'sk', class: 'tiny' }, o.wrong.slice(0, 3).join(' · ') || '—')]; }))),
-      sec('Типи завдань', 'Точність і середній (медіанний) час на відповідь.', anTable(['Тип', 'Відповідей', 'Точність', 'Час'], Object.entries(typeStat).sort((a, b) => b[1].n - a[1].n).map(([y, o]) => [y, o.n, pct(o.ok, o.n), med(o.ms)]))),
+      sec('Типи завдань', 'Точність і середній (медіанний) час на відповідь.', anTable(['Тип', 'Відповідей', 'Точність', 'Час'], Object.entries(typeStat).sort((a, b) => b[1].n - a[1].n).map(([y, o]) => [anType(y), o.n, pct(o.ok, o.n), med(o.ms)]))),
       sec('Останні неправильні відповіді', 'Шукай тут випадки, коли відповідь насправді правильна, а перевірка її не прийняла.', anTable(['Коли', 'Хто', 'Завдання', 'Відповідь', 'Очікувалось'],
         wrongRecent.map(x => { const t = anTask(x.k); return [anWhen(x.t), NAMES[x.who] || x.who, h('span', null, h('span', { class: 'tiny muted' }, t.where + ' · '), h('span', { lang: 'sk' }, t.txt)), h('b', { lang: 'sk' }, (x.st === 'almost' ? '≈ ' : '') + (x.u || '—')), h('span', { lang: 'sk' }, t.ans || '—')]; })),
         wrongAll.length > wrongRecent.length ? h('button', { class: 'btn ghost small', style: 'align-self:flex-start;margin-top:8px', onclick: () => { ui.moreWrong = true; render(); } }, 'Показати ще ' + (wrongAll.length - wrongRecent.length)) : null),
       sec('Функції', 'Скільки разів кожен користувався.', anTable(['Що', ...users.map(u => u.name)], featRows)),
-      sec('Слова, які натискають найчастіше', 'Найчастіше натискають слова, які погано пам\'ятають.', taps.length ? h('div', { class: 'row wrap', style: 'gap:6px' }, taps.map(([w, n]) => h('span', { class: 'chip', lang: 'sk' }, w + ' · ' + n))) : h('p', { class: 'small muted' }, 'Поки немає.')),
+      sec('Слова, які натискають найчастіше', 'Найчастіше натискають слова, які погано пам\'ятають. Число — скільки разів, у дужках — скільки людей; ★ — хтось додав це слово в картки.', taps.length ? h('div', { class: 'row wrap', style: 'gap:6px' }, taps.map(([w, n]) => h('span', { class: 'chip', lang: 'sk' }, (addedForms.has(w) ? '★ ' : '') + w + ' · ' + n + (tapWho[w] && tapWho[w].size > 1 ? ' (' + tapWho[w].size + ')' : '')))) : h('p', { class: 'small muted' }, 'Поки немає.')),
+      sec('Додані в «Мої слова»', 'Слова, які людина натиснула й одразу додала в картки, — найважчі для неї. «Натискали людей» — скільки людей натискали це слово за період.', anTable(['Коли', 'Хто', 'Натиснуто', 'Збережено як', 'Переклад', 'Натискали людей'],
+        adds.slice(0, ui.moreAdds ? 80 : 12).map(a => [anWhen(a.x.t), NAMES[a.x.who] || a.x.who, h('span', { lang: 'sk' }, a.form || '—'), h('b', { lang: 'sk' }, a.x.w || '—'), a.x.uk || '—', a.n || '—'])),
+        adds.length > 12 && !ui.moreAdds ? h('button', { class: 'btn ghost small', style: 'align-self:flex-start;margin-top:8px', onclick: () => { ui.moreAdds = true; render(); } }, 'Показати ще ' + (adds.length - 12)) : null),
       sec('Розділи', 'Скільки разів відкривали і скільки людей.', anTable(['Розділ', 'Відкрито', 'Людей'], Object.entries(views).sort((a, b) => b[1].n - a[1].n).map(([r, o]) => [r, o.n, o.who.size]))),
       sec('Кнопки', 'Що натискають (без варіантів відповідей у вправах).', anTable(['Де → що', 'Разів'], clicks)),
       sec('Збої платформи', 'Помилки JavaScript у людей. Порожньо — добре.', anTable(['Помилка', 'Разів', 'У кого', 'Версія', 'Остання'], Object.entries(errs).sort((a, b) => b[1].t - a[1].t).map(([m, o]) => [h('code', { class: 'tiny' }, m), o.n, [...o.who].join(', '), o.v || '—', anWhen(o.t)]))),
