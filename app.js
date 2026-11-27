@@ -4,13 +4,31 @@
 /* Хмарний режим на GitHub Pages (і localhost для розробки); у попередньому перегляді в Claude працює локальний режим */
 const CLOUD = /(^|\.)github\.io$/.test(location.hostname) || location.hostname === 'localhost';
 const PILOT = !CLOUD;
-let UID = null; const OTHER = {}; let SYNC = { state: 'local', err: '' };
+let UID = null; const OTHER = {}; let OTHERS_IN = false; let SYNC = { state: 'local', err: '' };
 const LESSON_FILES = ['lessons/g09.json', 'lessons/v08.json', 'lessons/s01.json', 'lessons/s02.json', 'lessons/s03.json', 'lessons/s04.json', 'lessons/s05.json'];
-const NAMES = { dima: 'Діма', natasha: 'Наташа', marina: 'Марина', vlad: 'Влад' };
-/** кого не показувати у вогниках і календарі активності (переглядачі) */
-const NO_STREAK = { vlad: true };
-/** хто ходить на заняття курсу (вт/ср): картка заняття, розминка, перенесення, нагадування про заняття */
-const ON_COURSE = { dima: true, natasha: true };
+/* Учасники й ролі. У хмарі беруться з документа config/access (адмін керує ними на сторінці «Учасники»),
+   тут — значення для пілоту. Ролі: admin (усе + «Учасники»), editor (+ «Додати урок», перенесення занять),
+   student (навчання й заняття курсу), viewer (без занять; його вогник бачить лише адмін). */
+let NAMES = { dima: 'Діма', natasha: 'Наташа', marina: 'Марина', vlad: 'Влад' };
+let ROLES = { dima: 'admin', natasha: 'editor', marina: 'viewer', vlad: 'viewer' };
+let ACC = null, EMAIL_KEY = {};
+const ROLE_UA = { admin: 'адмін', editor: 'редактор', student: 'учень', viewer: 'глядач' };
+const roleOf = k => ROLES[k] || '';
+const isAdmin = (k = PROFILE) => roleOf(k) === 'admin';
+const canEdit = (k = PROFILE) => ['admin', 'editor'].includes(roleOf(k));
+/** хто ходить на заняття курсу (вт/ср): картка заняття, розминка, нагадування про заняття */
+const onCourse = (k = PROFILE) => ['admin', 'editor', 'student'].includes(roleOf(k));
+const isViewer = (k = PROFILE) => roleOf(k) === 'viewer';
+/** на якому уроці курс: спільне число для всіх (config/access), у пілоті — з власного прогресу */
+const courseNum = () => (ACC && ACC.course) || (S && S.course) || 1;
+/** з якого уроку платформа дає дні в «Сьогодні» (кожен обирає сам) */
+const focusNum = () => (S && S.focus) || 1;
+/** застосувати документ доступу: імена, ролі, відповідність пошта → профіль */
+function applyAccess(acc) {
+  if (!acc || !acc.people) return;
+  ACC = acc; NAMES = {}; ROLES = {}; EMAIL_KEY = {};
+  Object.entries(acc.people).forEach(([em, p]) => { if (!p || !p.key) return; NAMES[p.key] = p.name || p.key; ROLES[p.key] = (acc.roles || {})[em] || 'viewer'; EMAIL_KEY[em] = p.key; });
+}
 const G_TOPICS = { 1: 'Вступний курс', 2: 'Вступний курс', 3: 'Вступний курс', 4: 'Вступний курс', 5: 'Вступний курс', 7: 'Moja izba', 8: 'Moja rodina · chlap, hrdina', 9: 'Ako vyzerá môj pracovný deň?', 10: 'Ako trávim svoj voľný čas? · stroj', 11: 'žena', 12: 'ulica', 13: 'mesto, srdce' };
 const V_NUMS = [1, 2, 3, 4, 5, 7, 8];
 const V_TOPICS = { 1: 'Абетка, вимова, знайомство', 2: 'М\'якість, tykanie/vykanie, професії', 3: 'Kto je to? Прізвища, країни', 4: 'Дієслова, числівники', 5: 'Числівники', 7: 'Кімната, родина', 8: 'Місто', 9: 'Професії, дорога', 10: 'Покупки, їжа' };
@@ -35,6 +53,7 @@ const I = {
   pen: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 19l1-4 10-10 3 3-10 10z"/></svg>',
   chat: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5h16v11H9l-5 4z"/></svg>',
   link: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 14l4-4M9 7l2-2a4 4 0 0 1 6 6l-2 2M15 17l-2 2a4 4 0 0 1-6-6l2-2"/></svg>',
+  users: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.6-3.6 3.3-5.5 6.5-5.5s5.9 1.9 6.5 5.5"/><path d="M16 4.6a3.4 3.4 0 0 1 0 6.8M18.5 14.8c1.7.8 2.8 2.6 3 5.2"/></svg>',
   gear: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M5 19l2-2M17 7l2-2"/></svg>',
   flame: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3c1 3.5 5 5.5 5 10a5 5 0 0 1-10 0c0-2 1-3.5 2-4.5.3 1.5 1 2.5 2 3 0-3 .5-5.5 1-8.5z"/></svg>',
   check: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5 9-10"/></svg>',
@@ -193,8 +212,14 @@ function pushCloud() {
 }
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden' && cloudT) pushCloud(); });
 /** усі інші профілі — для вогників і календаря */
-function othersAll() { return Object.keys(NAMES).filter(p => p !== PROFILE && !NO_STREAK[p]).map(p => { if (CLOUD) return { id: p, st: OTHER[p] || null }; const st = Store.get('p.' + p, null); return { id: p, st: st ? Object.assign(newState(), st) : null }; }); }
-function otherState() { const o = PROFILE === 'dima' ? 'natasha' : 'dima'; if (CLOUD) return { id: o, st: OTHER[o] || null }; const st = Store.get('p.' + o, null); return st ? { id: o, st: Object.assign(newState(), st) } : { id: o, st: null }; }
+function stateOf(p) { if (p === PROFILE) return S; if (CLOUD) return OTHER[p] || null; const st = Store.get('p.' + p, null); return st ? Object.assign(newState(), st) : null; }
+/** чиї вогники й календар бачу я: глядачів бачить лише адмін; адмін може сховати будь-кого (видно тоді лише в налаштуваннях) */
+function othersAll(hiddenOnly) {
+  const hid = (S.settings && S.settings.hide) || [];
+  return Object.keys(NAMES).filter(p => p !== PROFILE && (isAdmin() || !isViewer(p)) && (hiddenOnly ? isAdmin() && hid.includes(p) : !(isAdmin() && hid.includes(p)))).map(p => ({ id: p, st: stateOf(p) }));
+}
+/** стани тих, хто може переносити заняття (адмін і редактор), разом зі своїм */
+function editorStates() { return Object.keys(NAMES).filter(p => canEdit(p)).map(stateOf).filter(Boolean); }
 
 /* ---------- вміст ---------- */
 const C = { lessons: {}, banks: {}, errors: [] };
@@ -241,9 +266,18 @@ const lid = (tr, n) => tr + pad(n);
 const dayKey = (L, d) => L.id + ':' + d.n;
 const isDone = (L, d) => !!S.done[dayKey(L, d)];
 const cardById = (L, id) => (L.cards || []).find(c => c.id === id);
+/** перший непройдений день, починаючи з уроку, який користувач обрав («Мій урок») */
 function nextDay(tr) {
-  for (const L of lessonsOf(tr)) for (const d of L.days) if (!isDone(L, d)) return { L, d };
+  const f = focusNum();
+  for (const L of lessonsOf(tr)) { if (L.num < f) continue; for (const d of L.days) if (!isDone(L, d)) return { L, d }; }
   return null;
+}
+function chooseFocus() {
+  let pick = focusNum(); const svT = savedSession('today');
+  const grid = h('div', { class: 'numgrid' }, Array.from({ length: 35 }, (_, i) => i + 1).map(n => h('button', { class: n === pick ? 'on' : '', onclick: () => { pick = n; grid.querySelectorAll('button').forEach(b => b.classList.toggle('on', +b.textContent === n)); } }, n)));
+  dialog('З якого уроку вчитися?', h('div', { class: 'col' }, h('p', { class: 'muted small' }, '«Сьогодні» даватиме дні граматики й лексики, починаючи з цього уроку (тобто уроки цього тижня курсу). Попередні уроки лишаються в «Уроках», їх можна пройти будь-коли.'),
+    svT ? h('p', { class: 'small' }, 'Незавершена сесія на сьогодні почнеться заново з нового уроку.') : null, grid),
+    [['Скасувати', () => { }, 'ghost'], ['Зберегти', () => { S.focus = pick; if (svT) dropSession('today'); save(); render(); toast('«Сьогодні»: уроки з ' + pick + '-го'); }]]);
 }
 function doneSummary() { const m = {}; Object.keys(S.done).forEach(k => { const [l, n] = k.split(':'); (m[l] = m[l] || []).push(+n); }); return Object.keys(m).sort().map(l => (l[0] === 'g' ? 'Г' : 'Л') + (+l.slice(1)) + ': ' + m[l].sort((a, b) => a - b).join(',')).join(' · '); }
 function lessonProgress(L) { return L.days.filter(d => isDone(L, d)).length; }
@@ -257,7 +291,7 @@ function cardFromKey(key) { const [l, id] = key.split(':'); const L = l === 'my'
 function dueCards() { const t = today(); return Object.keys(S.cards).filter(k => S.cards[k].due <= t).map(cardFromKey).filter(Boolean); }
 /** 65% картки поточних уроків, 35% старі (40% при 10+ старих помилках) */
 function pickCards(list, n) {
-  const cur = new Set([lid('g', S.course), (nextDay('g') || {}).L && nextDay('g').L.id, (nextDay('v') || {}).L && nextDay('v').L.id]);
+  const cur = new Set([lid('g', courseNum()), (nextDay('g') || {}).L && nextDay('g').L.id, (nextDay('v') || {}).L && nextDay('v').L.id]);
   /** спершу ті, що чекають найдовше, а серед них — найслабші (нижчий рівень) */
   const urg = arr => shuffle(arr).sort((x, y) => ((S.cards[x.key] || {}).due || '').localeCompare((S.cards[y.key] || {}).due || '') || ((S.cards[x.key] || {}).b || 1) - ((S.cards[y.key] || {}).b || 1));
   const a = urg(list.filter(x => cur.has(x.L.id))), b = urg(list.filter(x => !cur.has(x.L.id)));
@@ -352,15 +386,17 @@ function render() {
 const NAV = [
   ['today', 'Сьогодні', 'home', true], ['lessons', 'Уроки', 'path', true], ['cards', 'Картки', 'cards', true], ['cheats', 'Шпаргалки', 'sheet', true],
   ['sent', 'Тренажер речень', 'sent'], ['trainer', 'Тренажер форм', 'trainer'], ['det', 'Визначник', 'det'], ['mistakes', 'Помилки', 'redo'], ['reading', 'Читання', 'book'],
-  ['texts', 'Мої тексти', 'pen'], ['phrases', 'Фрази', 'chat'], ['eslovak', 'e-slovak', 'link'], ['add', 'Додати урок', 'plus'], ['more', 'Налаштування', 'gear']
+  ['texts', 'Мої тексти', 'pen'], ['phrases', 'Фрази', 'chat'], ['eslovak', 'e-slovak', 'link'], ['add', 'Додати урок', 'plus'], ['people', 'Учасники', 'users'], ['more', 'Налаштування', 'gear']
 ];
+/** пункти меню з урахуванням ролі: «Додати урок» — редакторам, «Учасники» — адміну (у хмарі) */
+const navItems = () => NAV.filter(([r]) => (r !== 'add' || canEdit() || !CLOUD) && (r !== 'people' || (CLOUD && isAdmin())));
 function renderNav(cur) {
-  const map = { lesson: 'lessons', cheat: 'cheats', read: 'reading', text: 'texts', howto: 'add' };
+  const map = { lesson: 'lessons', cheat: 'cheats', read: 'reading', text: 'texts', howto: 'add', person: 'people' };
   const active = map[cur] || cur;
   const side = $('#side'); side.replaceChildren(
     h('div', { class: 'logo' }, 'slovenčina'),
     PILOT ? h('div', { class: 'pilot' }, 'Пілот: прогрес зберігається лише в цьому браузері') : '',
-    ...NAV.map(([r, label, ic]) => h('a', { class: 'nav' + (active === r ? ' on' : ''), href: '#' + r }, icon(ic), label, r === 'mistakes' && mistakeCount() ? h('span', { class: 'badge' }, mistakeCount()) : null)),
+    ...navItems().map(([r, label, ic]) => h('a', { class: 'nav' + (active === r ? ' on' : ''), href: '#' + r }, icon(ic), label, r === 'mistakes' && mistakeCount() ? h('span', { class: 'badge' }, mistakeCount()) : null)),
     h('div', { style: 'margin-top:auto;padding:14px 12px 0' }, h('button', { class: 'chip', onclick: switchProfile }, NAMES[PROFILE] + (CLOUD ? ' · вийти' : ' · змінити')))
   );
   const moreActive = !['today', 'lessons', 'cards', 'cheats'].includes(active);
@@ -380,9 +416,10 @@ function closeDialog() { const d = $('#dlg'); if (d) d.remove(); }
 let toastT;
 function toast(msg) { let t = $('#toast'); if (!t) { t = h('div', { id: 'toast', role: 'status' }); document.body.append(t); } t.textContent = msg; t.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => { t.hidden = true; }, 2600); }
 function chooseCourse() {
-  let pick = S.course;
+  if (CLOUD && !canEdit()) { toast('Номер уроку курсу змінюють Діма й Наташа'); return; }
+  let pick = courseNum();
   const grid = h('div', { class: 'numgrid' }, Array.from({ length: 35 }, (_, i) => i + 1).map(n => h('button', { class: n === pick ? 'on' : '', onclick: e => { pick = n; grid.querySelectorAll('button').forEach(b => b.classList.toggle('on', +b.textContent === n)); } }, n)));
-  dialog('На якому уроці зараз курс?', h('div', { class: 'col' }, h('p', { class: 'muted small' }, 'Урок за підручником (заняття у вівторок). Нічого не перемикається саме: це лише орієнтир.'), grid), [['Скасувати', () => { }, 'ghost'], ['Зберегти', () => { S.course = pick; save(); render(); }]]);
+  dialog('На якому уроці зараз курс?', h('div', { class: 'col' }, h('p', { class: 'muted small' }, 'Урок за підручником (заняття у вівторок). Це число спільне для всієї групи: від нього залежать розминка й межі тренажера форм.'), grid), [['Скасувати', () => { }, 'ghost'], ['Зберегти', () => { S.course = pick; save(); if (CLOUD && ACC && window.Cloud.saveCourse) window.Cloud.saveCourse(pick).then(() => { ACC.course = pick; render(); toast('Курс: урок ' + pick + ' — для всіх'); }, e => toast('Не вдалося зберегти: ' + (e.code || e.message))); render(); }]]);
 }
 function switchProfile() {
   if (CLOUD) { dialog('Вийти з акаунта?', h('p', null, 'Прогрес збережено в базі. Увійти знову можна через Google.'), [['Скасувати', () => { }, 'ghost'], ['Вийти', () => { pushCloud(); window.Cloud.signOut(); }, 'orange']]); return; }
@@ -554,7 +591,7 @@ function showItem() {
   /* новинка: показуємо один раз кожному, коли в завданні є слова, які можна натиснути */
   if (!(S.news && S.news.tap) && inner.querySelector('.sent .w')) {
     const tip = h('div', { class: 'note small newtip' }, h('span', null, h('b', null, 'Новинка. '), 'Натисни на будь-яке слово в реченні: з\'явиться переклад. Там же слово можна додати в картки («Мої слова») або виправити переклад.'),
-      h('button', { class: 'btn small', style: 'margin-top:8px', onclick: () => { S.news = Object.assign({}, S.news, { tap: today() }); save(); tip.remove(); } }, 'Зрозуміло'));
+      h('button', { class: 'btn small', style: 'margin-top:8px', onclick: () => { S.news = Object.assign({}, S.news, { tap: today() }); save(); tip.remove(); } }, 'Ок, ясно'));
     const sw = inner.querySelector('.sentwrap') || inner.querySelector('.sent'); if (sw) sw.after(tip); else inner.append(tip);
   }
   setFoot(PL.ctl.primary || null);
@@ -572,13 +609,15 @@ function setFoot(primary) {
 }
 function enablePrimary(on) { const b = $('#pl-primary'); if (b) b.disabled = !on; }
 /** показати результат. res: {status:'ok'|'almost'|'bad', answer, user, why} */
+/** повторювати неправильні відповіді в кінці сесії (налаштування, за замовчуванням так) */
+const retryOn = () => !(S.settings && S.settings.retry === false);
 function feedback(it, res) {
   const first = !it.answered; it.answered = true;
   sfx(res.status);
   if (it.task && it.task.sid && res.status !== 'bad') { S.sent = S.sent || {}; S.sent[it.task.sid] = today(); }
   if (res.status === 'ok') { PL.stats.ok++; fixMistake(it); }
   else if (res.status === 'almost') { PL.stats.almost++; addMistake(it); }
-  else { PL.stats.bad++; addMistake(it); if (!PL.retried.has(PL.i) && !it.retry) { PL.retried.add(PL.i); PL.items.push(Object.assign({}, it, { retry: true, answered: false, part: -1 })); PL.total++; } }
+  else { PL.stats.bad++; addMistake(it); if (retryOn() && !PL.retried.has(PL.i) && !it.retry) { PL.retried.add(PL.i); PL.items.push(Object.assign({}, it, { retry: true, answered: false, part: -1 })); PL.total++; } }
   const titles = { ok: ['Правильно!', 'Так!', 'Чудово!', 'Точно!'], almost: ['Майже!'], bad: ['Не зовсім'] };
   const t = titles[res.status]; const title = t[Math.floor(Math.random() * t.length)];
   const foot = $('#pl-foot'); foot.hidden = false; foot.className = 'pl-foot ' + res.status;
@@ -588,7 +627,14 @@ function feedback(it, res) {
   if (res.status === 'bad' && res.answer) fb.append(h('div', null, 'Правильна відповідь: ', h('b', { lang: 'sk' }, tapText(res.answer, fpop))));
   if (res.why) fb.append(h('div', null, h('b', null, (it.task && it.task.whyLabel) || 'Чому: '), it.task && it.task.whyLabel ? h('span', { lang: 'sk' }, tapText(res.why, fpop)) : rich(res.why)));
   if ((res.status === 'bad' && res.answer) || (it.task && it.task.whyLabel)) fb.append(fpop);
-  if (res.status !== 'ok' && it.mkey) fb.append(h('div', { class: 'tiny' }, 'Це завдання повернеться в «Помилках».'));
+  if (res.status !== 'ok' && it.mkey) fb.append(h('div', { class: 'tiny' }, res.status === 'bad' && retryOn() && !it.retry ? 'Повториш його в кінці сесії. Правильно — і воно не піде в «Помилки».' : 'Завдання збережено в «Помилки».'));
+  /* новинка: один раз, при першій неправильній відповіді */
+  if (res.status === 'bad' && !(S.news && S.news.retry)) {
+    const inner = $('#pl-body .pl-inner');
+    if (inner) { const tip = h('div', { class: 'note small newtip' }, h('span', null, h('b', null, 'Новинка. '), retryOn() ? 'Неправильні відповіді повторюються в кінці сесії. Якщо хочеш, щоб вони одразу йшли в «Помилки», вимкни це: «Ще» → «Повтор помилок у кінці сесії».' : 'Повтор помилок у кінці сесії вимкнено: неправильні відповіді одразу йдуть у «Помилки». Увімкнути можна в «Ще».'),
+      h('button', { class: 'btn small', style: 'margin-top:8px', onclick: () => { S.news = Object.assign({}, S.news, { retry: today() }); save(); tip.remove(); } }, 'Ок, ясно'));
+      inner.append(tip); }
+  }
   const nb = h('button', { class: 'btn wide ' + (res.status === 'ok' ? '' : 'orange'), id: 'pl-primary', onclick: next }, res.status === 'ok' ? 'Далі' : 'Зрозуміло');
   foot.replaceChildren(h('div', { class: 'in' }, fb, h('div', { class: 'foot-act' }, nb, h('div', { class: 'keys' }, 'Enter · далі'))));
   PL.ctl = Object.assign(PL.ctl || {}, { locked: true });
@@ -1258,13 +1304,13 @@ const fmtWhen = d => UA_DAYS[d.getDay()] + ', ' + d.getDate() + ' ' + UA_MONTHS[
 const fmtShort = d => UA_DAYS[d.getDay()] + ' ' + fmtDate(dstr(d)) + ' ' + hm(d);
 function parseLocal(s) { const [a, b] = s.split('T'); const [y, m, d] = a.split('-').map(Number); const [H, M] = (b || '0:0').split(':').map(Number); return new Date(y, m - 1, d, H, M); }
 function allMoves() {
-  const out = {}; const o = otherState().st;
-  [o && o.moves, S.moves].forEach(m => Object.entries(m || {}).forEach(([k, v]) => { if (!out[k] || (v.ts || 0) > (out[k].ts || 0)) out[k] = v; }));
+  const out = {};
+  editorStates().map(st => st.moves).forEach(m => Object.entries(m || {}).forEach(([k, v]) => { if (!out[k] || (v.ts || 0) > (out[k].ts || 0)) out[k] = v; }));
   return out;
 }
 function allClassLog() {
-  const o = otherState().st; const lg = {};
-  [o && o.classLog, S.classLog].forEach(a => (a || []).forEach(e => { lg[e.ts + '|' + e.slot] = e; }));
+  const lg = {};
+  editorStates().map(st => st.classLog).forEach(a => (a || []).forEach(e => { lg[e.ts + '|' + e.slot] = e; }));
   return Object.values(lg).sort((x, y) => y.ts - x.ts);
 }
 /** усі звичайні заняття між двома датами (YYYY-MM-DD) з урахуванням перенесень */
@@ -1284,7 +1330,7 @@ function nextClass() {
   return classSlots(addDays(today(), -14), addDays(today(), 21)).filter(x => !x.off && x.at > now).sort((a, b) => a.at - b.at)[0] || null;
 }
 function classLesson(tr) {
-  if (tr === 'g' && C.lessons[lid('g', S.course)]) return C.lessons[lid('g', S.course)];
+  if (tr === 'g' && C.lessons[lid('g', courseNum())]) return C.lessons[lid('g', courseNum())];
   const all = lessonsOf(tr); return all[all.length - 1] || null; // крайній урок, а не той, де ти зараз на платформі
 }
 function warmupItems(L) {
@@ -1297,7 +1343,7 @@ function whenLabel(at) {
   const t = today(), d = dstr(at);
   return d === t ? 'сьогодні о ' + hm(at) : d === addDays(t, 1) ? 'завтра о ' + hm(at) : fmtWhen(at);
 }
-const moveBtn = () => h('button', { class: 'link small', onclick: () => moveDialog() }, 'перенести');
+const moveBtn = () => canEdit() ? h('button', { class: 'link small', onclick: () => moveDialog() }, 'перенести') : null;
 function classCard() {
   const c = nextClass(); if (!c) return null;
   const movedNote = c.moved ? h('span', { class: 'tiny muted' }, 'перенесено з ' + fmtShort(c.base) + (c.by ? ' · ' + NAMES[c.by] : '')) : null;
@@ -1317,6 +1363,7 @@ function setMove(slot, val, what) {
   save(); render(); toast(TR_NAME[slot.tr] + ': ' + what);
 }
 function moveDialog(pickKey) {
+  if (!canEdit()) { toast('Переносити заняття можуть лише Діма й Наташа'); return; }
   const now = new Date();
   const slots = classSlots(addDays(today(), -14), addDays(today(), 28)).filter(x => x.at > now || x.base > now || (x.off && x.base > addDaysDate(now, -1)));
   if (!slots.length) { toast('Немає найближчих занять'); return; }
@@ -1344,8 +1391,8 @@ function moveDialog(pickKey) {
 }
 function addDaysDate(d, n) { const x = new Date(d); x.setDate(x.getDate() + n); return x; }
 function historyDialog() {
-  const now = new Date(); const o = otherState().st;
-  const seen = Object.keys(S.sessions || {}).concat(Object.keys((o && o.sessions) || {})).sort();
+  const now = new Date();
+  const seen = [S].concat(editorStates()).flatMap(st => Object.keys(st.sessions || {})).sort();
   const from = !seen.length ? today() : seen[0] > addDays(today(), -182) ? seen[0] : addDays(today(), -182);
   const past = classSlots(from, today()).filter(x => (x.off ? x.base : x.at) <= now).reverse();
   const log = allClassLog();
@@ -1355,7 +1402,7 @@ function historyDialog() {
     h('div', { class: 'col', style: 'gap:6px' }, h('h3', { style: 'margin:0' }, 'Зміни розкладу'),
       log.length ? h('ul', { class: 'small', style: 'margin:0;padding-left:20px;line-height:1.6' }, log.map(e => h('li', null, h('span', { class: 'muted' }, fmtDate(dstr(new Date(e.ts))) + ' · ' + (NAMES[e.by] || '') + ': '), TR_NAME[e.tr] + ': ' + e.from + ' → ' + e.to))) : h('p', { class: 'small muted', style: 'margin:0' }, 'Перенесень ще не було.')),
     h('p', { class: 'tiny muted', style: 'margin:0' }, 'Список рахується від першого дня на платформі: звичайні заняття за розкладом плюс усі перенесення й скасування. ' + 'До 23.11.2026 у платформі стояв час 17:30 — це було помилкою, насправді заняття о 17:00.'));
-  dialog('Історія занять', body, [['Перенести заняття', () => { setTimeout(() => moveDialog(), 0); }, 'ghost'], ['Закрити', () => { }]]);
+  dialog('Історія занять', body, (canEdit() ? [['Перенести заняття', () => { setTimeout(() => moveDialog(), 0); }, 'ghost']] : []).concat([['Закрити', () => { }]]));
 }
 /** скільки карток чекає понад те, що вже є в сесії на сьогодні */
 function cardsLeftCard(doneToday, parts) {
@@ -1365,9 +1412,12 @@ function cardsLeftCard(doneToday, parts) {
   return h('div', { class: 'soft spread' }, h('div', { class: 'col', style: 'gap:0' }, h('span', { class: 'b' }, (doneToday ? 'Ще ' : 'Понад сесію ще ') + left + ' ' + plural(left, 'картка чекає', 'картки чекають', 'карток чекають') + ' на повтор'), h('span', { class: 'tiny muted' }, 'Спершу ті, що чекають найдовше. ~' + Math.max(1, Math.round(n * 15 / 60)) + ' хв')),
     h('button', { class: 'btn small ghost', onclick: () => startSession({ title: 'Картки повторено', label: 'Картки', resumeKey: 'misc:Картки', parts: [{ items: flashItems(pickCards(dueCards(), 20)) }] }) }, 'Повторити ' + n));
 }
+function hideStreak(id, on) {
+  S.settings.hide = ((S.settings.hide || []).filter(x => x !== id)).concat(on ? [id] : []); save(); render();
+  toast(on ? NAMES[id] + ': вогник сховано. Показати знову — у «Ще» → «Сховані вогники».' : NAMES[id] + ': вогник знову на головній');
+}
 VIEWS.today = main => {
   const now = new Date();
-  const o = otherState();
   const parts = todayParts();
   const doneToday = !!(S.daily || {})[today()] || (!parts.length && !!S.sessions[today()]);
   const allItems = parts.flatMap(p => p.items);
@@ -1387,15 +1437,17 @@ VIEWS.today = main => {
           doneToday && PILOT && parts.length ? h('button', { class: 'btn ghost wide', onclick: startToday }, 'Пілот: пройти наступну сесію') : null
         ),
         cardsLeftCard(doneToday, parts),
-        ON_COURSE[PROFILE] ? classCard() : null,
-        !ON_COURSE[PROFILE] ? null : h('div', { class: 'soft spread' }, h('span', { class: 'b' }, 'Ми на курсі зараз: ', h('span', null, 'урок ' + S.course)), h('button', { class: 'link', onclick: chooseCourse }, 'змінити')),
-        ON_COURSE[PROFILE] && g && g.L.num < S.course ? h('div', { class: 'note spread' }, h('span', null, 'Курс уже на уроці ' + S.course + '. Платформа чекає на тебе на уроці ' + g.L.num + '.'), C.lessons[lid('g', S.course)] ? h('button', { class: 'btn small orange', onclick: () => go('lesson-' + lid('g', S.course)) }, 'Урок ' + S.course) : null) : null,
+        onCourse() ? classCard() : null,
+        h('div', { class: 'soft col', style: 'gap:6px' },
+          onCourse() ? h('div', { class: 'spread' }, h('span', { class: 'b' }, 'Курс зараз: ', h('span', null, 'урок ' + courseNum())), canEdit() || !CLOUD ? h('button', { class: 'link', onclick: chooseCourse }, 'змінити') : null) : null,
+          h('div', { class: 'spread' }, h('span', { class: 'b' }, 'Я вчу: ', h('span', null, 'уроки з ' + focusNum() + '-го')), h('button', { class: 'link', onclick: chooseFocus }, 'змінити'))),
+        onCourse() && g && g.L.num < courseNum() && focusNum() < courseNum() ? h('div', { class: 'note spread' }, h('span', null, 'Курс уже на уроці ' + courseNum() + ', а «Сьогодні» дає урок ' + g.L.num + '.'), h('button', { class: 'btn small orange', onclick: () => { S.focus = courseNum(); if (savedSession('today')) dropSession('today'); save(); render(); toast('«Сьогодні»: уроки ' + courseNum() + '-го тижня'); } }, 'Перейти на ' + courseNum())) : null,
         ...['g', 'v'].map(tr => { const nd = nextDay(tr) || (lessonsOf(tr).length ? { L: lessonsOf(tr)[lessonsOf(tr).length - 1] } : null); if (!nd) return null; const L = nd.L; return h('div', { class: 'card' }, h('div', { class: 'col', style: 'gap:2px' }, h('h3', null, (tr === 'g' ? 'Граматика' : 'Лексика') + ' · урок ' + L.num), h('a', { href: '#lesson-' + L.id, class: 'small b', lang: 'sk' }, L.title)), dayPath(L), PILOT ? h('p', { class: 'tiny muted' }, 'Пілот: будь-який день можна відкрити тапом.') : null); })
       ),
       h('div', { class: 'stack' },
-        h('div', { class: 'streaks' }, [...(NO_STREAK[PROFILE] ? [] : [[PROFILE, S]]), ...othersAll().map(x => [x.id, x.st])].map(([id, st]) => h('div', { class: 'streak' }, icon('flame'), h('div', { class: 'col', style: 'gap:0' }, h('span', { class: 'small b muted' }, NAMES[id]), h('span', { class: 'n' }, st ? streakOf(st) + ' ' + plural(streakOf(st), 'день', 'дні', 'днів') : '—'))))),
-        h('div', { class: 'card' }, h('h3', null, 'Активність за 2 тижні'), h('div', { class: 'cal' }, NO_STREAK[PROFILE] ? null : calendarRow(NAMES[PROFILE], S), othersAll().map(x => calendarRow(NAMES[x.id], x.st)))),
-        CLOUD && ON_COURSE[PROFILE] && !Object.keys(S.done).length && !Object.keys(S.cards).length ? h('div', { class: 'card' }, h('h3', null, 'Є прогрес з пілоту?'), h('p', { class: 'small muted' }, 'У пілоті: Налаштування → «Скопіювати копію». Тут: Налаштування → «Відновити з копії».'), h('button', { class: 'btn ghost small', onclick: importDialog }, 'Відновити з копії')) : null,
+        h('div', { class: 'streaks' }, [[PROFILE, S], ...othersAll().map(x => [x.id, x.st])].map(([id, st]) => h('div', { class: 'streak' }, icon('flame'), h('div', { class: 'col grow', style: 'gap:0' }, h('span', { class: 'small b muted' }, NAMES[id]), h('span', { class: 'n' }, st ? streakOf(st) + ' ' + plural(streakOf(st), 'день', 'дні', 'днів') : '—')), CLOUD && isAdmin() && id !== PROFILE ? h('button', { class: 'link tiny', style: 'min-height:32px;padding:2px 4px', title: 'Сховати з головної (видно буде в налаштуваннях)', onclick: () => hideStreak(id, true) }, 'Сховати') : null))),
+        h('div', { class: 'card' }, h('h3', null, 'Активність за 2 тижні'), h('div', { class: 'cal' }, calendarRow(NAMES[PROFILE], S), othersAll().map(x => calendarRow(NAMES[x.id], x.st)))),
+        CLOUD && onCourse() && !Object.keys(S.done).length && !Object.keys(S.cards).length ? h('div', { class: 'card' }, h('h3', null, 'Є прогрес з пілоту?'), h('p', { class: 'small muted' }, 'У пілоті: Налаштування → «Скопіювати копію». Тут: Налаштування → «Відновити з копії».'), h('button', { class: 'btn ghost small', onclick: importDialog }, 'Відновити з копії')) : null,
         !Object.keys(C.lessons).length ? h('a', { class: 'card', href: '#add', style: 'text-decoration:none;color:inherit' }, h('h3', null, 'Уроків ще немає'), h('p', { class: 'small muted' }, 'Додай перший урок: розділ «Додати урок».')) : null,
         Object.keys(C.banks).length ? h('a', { class: 'card', href: '#sent', style: 'text-decoration:none;color:inherit' }, h('div', { class: 'spread' }, h('div', { class: 'col', style: 'gap:2px' }, h('span', { class: 'b' }, 'Тренажер речень'), h('span', { class: 'small muted' }, 'Переклади українське речення словацькою · рівні 1–' + Object.keys(C.banks).length)), h('span', { class: 'ico s', html: I.sent }))) : null,
         mistakeCount() ? h('a', { class: 'card', href: '#mistakes', style: 'text-decoration:none;color:inherit' }, h('div', { class: 'spread' }, h('span', { class: 'b' }, 'Помилки до повторення'), h('span', { class: 'badge' }, mistakeCount()))) : null
@@ -1408,7 +1460,7 @@ VIEWS.lessons = main => {
   const tile = (tr, n, topic) => {
     const L = C.lessons[lid(tr, n)];
     const p = L ? lessonProgress(L) : 0;
-    return h('button', { class: 'tile ' + (L ? 'has' : 'empty') + (tr === 'g' && n === S.course ? ' now' : ''), onclick: () => go('lesson-' + lid(tr, n)) },
+    return h('button', { class: 'tile ' + (L ? 'has' : 'empty') + (tr === 'g' && n === courseNum() ? ' now' : ''), onclick: () => go('lesson-' + lid(tr, n)) },
       h('span', { class: 'b' }, 'Урок ' + n), h('span', { class: 'small muted' }, L ? L.title : (topic || 'ще не додано')),
       L ? h('div', { class: 'bar' }, h('i', { style: 'width:' + Math.round(100 * p / 7) + '%' })) : h('span', { class: 'tiny' }, 'ще не додано'));
   };
@@ -1505,7 +1557,7 @@ const pickOne = a => a[Math.floor(Math.random() * a.length)];
 function trainerMax() {
   let m = 0;
   Object.values(C.lessons).forEach(X => { if (X.track === 'g' && X.days.some(d => isDone(X, d))) m = Math.max(m, X.num); });
-  if (ON_COURSE[PROFILE]) m = Math.max(m, S.course || 0);
+  if (onCourse()) m = Math.max(m, courseNum());
   if (!m) { const nd = nextDay('g'); m = nd ? nd.L.num : 1; }
   return m;
 }
@@ -1550,7 +1602,7 @@ VIEWS.trainer = main => {
     : h('button', { class: 'chip' + (pref[k].includes(v) ? ' on' : ''), 'aria-pressed': pref[k].includes(v) ? 'true' : 'false', onclick: () => toggle(k, v) }, l)));
   const go10 = mode => startSession({ title: 'Тренування завершено', label: 'Тренажер форм', parts: [{ items: trainerItems(mode, 10) }] });
   main.append(h('div', { class: 'stack', style: 'max-width:760px' }, h('h1', null, 'Тренажер форм'), h('p', { class: 'muted' }, 'Відмінки іменників і форми дієслів зі слів пройдених уроків. 10 завдань з миттєвою перевіркою. Помилки потрапляють у «Помилки».'),
-    h('div', { class: 'soft' }, h('span', null, 'Слова з уроків граматики 1–' + m + (Ls.some(L => L.track === 'v') ? ' і початих уроків лексики' : '') + ': ' + nForms + ' ' + plural(nForms, 'іменник', 'іменники', 'іменників') + ', ' + nVerbs + ' ' + plural(nVerbs, 'дієслово', 'дієслова', 'дієслів') + '.'), h('span', { class: 'tiny muted', style: 'display:block' }, ON_COURSE[PROFILE] ? 'Межа — урок курсу (' + (S.course || '—') + ') або найдальший урок, який ти почав на платформі.' : 'Межа — найдальший урок, який ти почав на платформі.')),
+    h('div', { class: 'soft' }, h('span', null, 'Слова з уроків граматики 1–' + m + (Ls.some(L => L.track === 'v') ? ' і початих уроків лексики' : '') + ': ' + nForms + ' ' + plural(nForms, 'іменник', 'іменники', 'іменників') + ', ' + nVerbs + ' ' + plural(nVerbs, 'дієслово', 'дієслова', 'дієслів') + '.'), h('span', { class: 'tiny muted', style: 'display:block' }, onCourse() ? 'Межа — урок курсу (' + courseNum() + ') або найдальший урок, який ти почав на платформі.' : 'Межа — найдальший урок, який ти почав на платформі.')),
     has ? h('div', { class: 'col' },
       !nForms ? h('div', { class: 'card' }, h('h3', null, 'Іменники'), h('p', { class: 'small muted' }, 'Відмінювання іменників почнеться з уроку 8.')) : h('div', { class: 'card' }, h('h3', null, 'Іменники'),
         h('span', { class: 'small b muted' }, 'Відмінки'),
@@ -1680,16 +1732,22 @@ VIEWS.eslovak = main => {
 
 VIEWS.more = main => {
   main.append(h('div', { class: 'stack', style: 'max-width:760px' }, h('h1', null, 'Ще'),
-    h('div', { class: 'card' }, h('div', { class: 'list' }, NAV.slice(4, 12).map(([r, label, ic]) => h('a', { class: 'li', href: '#' + r, style: 'text-decoration:none;color:inherit' }, h('span', { class: 'ico g', html: I[ic] }), h('span', { class: 'b grow' }, label), r === 'mistakes' && mistakeCount() ? h('span', { class: 'badge' }, mistakeCount()) : null)))),
+    h('div', { class: 'card' }, h('div', { class: 'list' }, navItems().filter(n => !n[3] && n[0] !== 'more').map(([r, label, ic]) => h('a', { class: 'li', href: '#' + r, style: 'text-decoration:none;color:inherit' }, h('span', { class: 'ico g', html: I[ic] }), h('span', { class: 'b grow' }, label), r === 'mistakes' && mistakeCount() ? h('span', { class: 'badge' }, mistakeCount()) : null)))),
     h('h2', null, 'Налаштування'),
     h('div', { class: 'card' },
-      h('div', { class: 'spread' }, h('span', null, 'Профіль: ', h('b', null, NAMES[PROFILE]), CLOUD && window.Cloud ? ' (' + (window.Cloud.email || '') + ')' : ''), h('button', { class: 'btn ghost small', onclick: switchProfile }, CLOUD ? 'Вийти' : 'Змінити')),
+      h('div', { class: 'spread' }, h('span', null, 'Профіль: ', h('b', null, NAMES[PROFILE]), CLOUD && window.Cloud ? ' (' + (window.Cloud.email || '') + ')' : '', roleOf(PROFILE) ? ' · ' + ROLE_UA[roleOf(PROFILE)] : ''), h('button', { class: 'btn ghost small', onclick: switchProfile }, CLOUD ? 'Вийти' : 'Змінити')),
       CLOUD ? h('div', { class: 'spread' }, h('span', null, 'Синхронізація: ', h('b', null, { ok: 'збережено', saving: 'зберігаю…', err: 'помилка (' + SYNC.err + ')', local: 'очікує' }[SYNC.state] || SYNC.state)), h('button', { class: 'btn ghost small', onclick: () => { pushCloud(); toast('Зберігаю…'); } }, 'Зберегти зараз')) : null,
-      !ON_COURSE[PROFILE] ? null : h('div', { class: 'spread' }, h('span', null, 'Курс зараз на уроці: ', h('b', null, S.course)), h('button', { class: 'btn ghost small', onclick: chooseCourse }, 'Змінити')),
+      h('div', { class: 'spread' }, h('span', null, 'Я вчу: ', h('b', null, 'уроки з ' + focusNum() + '-го')), h('button', { class: 'btn ghost small', onclick: chooseFocus }, 'Змінити')),
+      !onCourse() ? null : h('div', { class: 'spread' }, h('span', null, 'Курс зараз на уроці: ', h('b', null, courseNum())), canEdit() || !CLOUD ? h('button', { class: 'btn ghost small', onclick: chooseCourse }, 'Змінити') : null),
       h('div', { class: 'spread' }, h('span', null, 'Озвучка: ', h('b', null, SK_VOICE ? (S.settings.tts === false ? 'вимкнено' : 'увімкнено (' + SK_VOICE.name + ')') : 'немає словацького голосу в системі')), SK_VOICE ? h('button', { class: 'btn ghost small', onclick: () => { S.settings.tts = S.settings.tts === false; save(); render(); } }, S.settings.tts === false ? 'Увімкнути' : 'Вимкнути') : null),
       h('div', { class: 'spread' }, h('span', null, 'Звуки відповідей: ', h('b', null, S.settings.sound === false ? 'вимкнено' : 'увімкнено')), h('button', { class: 'btn ghost small', onclick: () => { S.settings.sound = S.settings.sound === false; save(); render(); if (S.settings.sound !== false) sfx('ok'); } }, S.settings.sound === false ? 'Увімкнути' : 'Вимкнути')),
+      h('div', { class: 'spread' }, h('div', { class: 'col', style: 'gap:2px' }, h('span', null, 'Повтор помилок у кінці сесії: ', h('b', null, retryOn() ? 'увімкнено' : 'вимкнено')), h('span', { class: 'tiny muted' }, retryOn() ? 'Неправильну відповідь повториш у кінці сесії; правильно — і вона не піде в «Помилки».' : 'Неправильні відповіді одразу йдуть у розділ «Помилки».')),
+        h('button', { class: 'btn ghost small', onclick: () => { S.settings.retry = !retryOn(); S.news = Object.assign({}, S.news, { retry: S.news && S.news.retry || today() }); save(); render(); } }, retryOn() ? 'Вимкнути' : 'Увімкнути')),
       h('div', { class: 'spread wrap' }, h('span', null, 'Тема'), h('div', { class: 'row', style: 'gap:6px' }, [['light', 'Світла'], ['dark', 'Темна'], ['auto', 'Як у системі']].map(([v, l]) => h('button', { class: 'chip' + (themePref() === v ? ' on' : ''), 'aria-pressed': themePref() === v ? 'true' : 'false', onclick: () => setTheme(v) }, l))))),
     notifyCard(),
+    CLOUD && isAdmin() && othersAll(true).length ? h('div', { class: 'card' }, h('h3', null, 'Сховані вогники'), h('p', { class: 'small muted' }, 'Видно лише тобі. На головній їх немає.'),
+      h('div', { class: 'streaks' }, othersAll(true).map(x => h('div', { class: 'streak' }, icon('flame'), h('div', { class: 'col grow', style: 'gap:0' }, h('span', { class: 'small b muted' }, NAMES[x.id]), h('span', { class: 'n' }, x.st ? streakOf(x.st) + ' ' + plural(streakOf(x.st), 'день', 'дні', 'днів') : '—')), h('button', { class: 'link tiny', style: 'min-height:32px', onclick: () => hideStreak(x.id, false) }, 'Показати')))),
+      h('div', { class: 'cal' }, othersAll(true).map(x => calendarRow(NAMES[x.id], x.st)))) : null,
     h('div', { class: 'card' }, h('h3', null, 'Резервна копія прогресу'), h('p', { class: 'small muted' }, CLOUD ? 'Прогрес зберігається в базі. Сюди можна вставити копію з пілоту, щоб перенести пройдене.' : 'Поки немає Firebase, прогрес лежить лише в цьому браузері. Копію можна зберегти як текст.'),
       h('div', { class: 'row wrap' },
         h('button', { class: 'btn ghost small', onclick: () => { const txt = JSON.stringify({ profile: PROFILE, state: S }); try { navigator.clipboard.writeText(txt).then(() => toast('Копію скопійовано'), () => showExport(txt)); } catch (e) { showExport(txt); } } }, 'Скопіювати копію'),
@@ -1702,7 +1760,7 @@ VIEWS.more = main => {
       CLOUD ? h('div', null, 'Остання синхронізація: ', h('b', null, (SYNC.at || '—') + ' · ' + ({ ok: 'успішно', err: 'ПОМИЛКА ' + SYNC.err, saving: 'триває', local: 'ще не було' }[SYNC.state] || SYNC.state))) : null,
       h('div', null, 'Пройдено днів: ', h('b', null, Object.keys(S.done).length), ' · карток: ', h('b', null, Object.keys(S.cards).length), ' · серія: ', h('b', null, streakOf(S))),
       h('div', null, 'Дні: ', h('b', null, doneSummary() || '—')))),
-    h('p', { class: 'tiny muted' }, (CLOUD ? 'Версія: 3.2.1 (28.11)' : 'Версія: пілот 0.5') + ' · уроків завантажено: ' + Object.keys(C.lessons).length + (C.errors.length ? ' · помилка завантаження: ' + C.errors.join(', ') : ''))));
+    h('p', { class: 'tiny muted' }, (CLOUD ? 'Версія: 3.4 (28.11)' : 'Версія: пілот 0.5') + ' · уроків завантажено: ' + Object.keys(C.lessons).length + (C.errors.length ? ' · помилка завантаження: ' + C.errors.join(', ') : ''))));
 };
 function showExport(txt) { const ta = h('textarea', { class: 'txt', readonly: true, 'aria-label': 'Копія прогресу' }); ta.value = txt; dialog('Копія прогресу', h('div', { class: 'col' }, h('p', { class: 'small' }, 'Виділи весь текст і скопіюй.'), ta), [['Готово', () => { }]]); }
 function importDialog() {
@@ -1734,7 +1792,7 @@ function ntDoc() {
   const sess = Object.keys(S.daily || {}).sort(), cut = addDays(today(), -60), moves = {};
   Object.entries(allMoves()).forEach(([k, v]) => { if (k >= cut) moves[k] = v; });
   let tz = 'Europe/Kyiv'; try { tz = Intl.DateTimeFormat().resolvedOptions().timeZone || tz; } catch (e) { }
-  return { v: 1, name: PROFILE, tz, on: !!NT.on, daily: NT.dailyOn ? NT.daily : '', cls: ON_COURSE[PROFILE] ? NT.cls || 0 : 0, devices: NT.devices, done: sess[sess.length - 1] || '', next, lessons, sched: { days: CLASSES, h: CLASS_TIME[0], m: CLASS_TIME[1] }, moves, test: NT.test || 0, sts: NT.sts || 0 };
+  return { v: 1, name: PROFILE, tz, on: !!NT.on, daily: NT.dailyOn ? NT.daily : '', cls: onCourse() ? NT.cls || 0 : 0, devices: NT.devices, done: sess[sess.length - 1] || '', next, lessons, sched: { days: CLASSES, h: CLASS_TIME[0], m: CLASS_TIME[1] }, moves, test: NT.test || 0, sts: NT.sts || 0 };
 }
 /* Документ сповіщень спільний для всіх твоїх пристроїв. Щоб застосунок, який довго висів у фоні,
    не затер свіжі налаштування чи підписки інших пристроїв, перед записом читаємо документ із бази й зливаємо:
@@ -1819,8 +1877,8 @@ function notifyCard() {
     h('div', { class: 'col', style: 'gap:12px;opacity:' + (NT.on ? 1 : .55) },
       h('div', { class: 'spread wrap', style: 'gap:8px' }, chk(NT.dailyOn, v => { ntSet({ dailyOn: v }); render(); }, 'Щоденне нагадування о'), tIn),
       h('p', { class: 'tiny muted', style: 'margin:-6px 0 0' }, 'Не прийде, якщо день на сьогодні вже пройдено.'),
-      ON_COURSE[PROFILE] ? h('div', { class: 'spread wrap', style: 'gap:8px' }, chk(NT.cls > 0, v => { ntSet({ cls: v ? 60 : 0 }); render(); }, 'Про заняття за'), cSel) : null,
-      ON_COURSE[PROFILE] ? h('p', { class: 'tiny muted', style: 'margin:-6px 0 0' }, 'Враховує перенесення й скасування.') : null),
+      onCourse() ? h('div', { class: 'spread wrap', style: 'gap:8px' }, chk(NT.cls > 0, v => { ntSet({ cls: v ? 60 : 0 }); render(); }, 'Про заняття за'), cSel) : null,
+      onCourse() ? h('p', { class: 'tiny muted', style: 'margin:-6px 0 0' }, 'Враховує перенесення й скасування.') : null),
     chk(!NT.on, v => { ntSet({ on: !v }, true); render(); toast(v ? 'Усі сповіщення вимкнено' : 'Сповіщення знову увімкнено'); }, 'Вимкнути всі сповіщення'),
     h('div', { class: 'spread' }, h('span', { class: 'small muted' }, nDev ? 'Пристроїв зі сповіщеннями: ' + nDev + ' (' + Object.values(NT.devices).map(d => d.ua).join(', ') + ')' : 'Сповіщення ще не увімкнено на жодному пристрої.'),
       h('button', { class: 'btn ghost small', disabled: !nDev || !NT.on, onclick: () => { ntSet({ test: Date.now() }, true); toast('Тестове сповіщення прийде протягом хвилини'); } }, 'Перевірити')));
@@ -1900,7 +1958,49 @@ function saveLessonEverywhere(L) {
   const list = (Store.get('lessons.local', []) || []).filter(x => x.id !== L.id); list.push(L); Store.set('lessons.local', list); storeContent(L); return Promise.resolve();
 }
 
+/** ключ профілю для нового учасника: з частини пошти до @, лише латиниця й цифри, без збігів */
+function newKey(email) {
+  let base = String(email).split('@')[0].toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 20) || 'user', k = base, i = 2;
+  const used = new Set(Object.values((ACC && ACC.people) || {}).map(p => p.key));
+  while (used.has(k)) k = base + i++;
+  return k;
+}
+VIEWS.people = main => {
+  if (!CLOUD || !isAdmin() || !ACC) { main.append(h('div', { class: 'stack' }, h('h1', null, 'Учасники'), h('p', { class: 'muted' }, 'Сторінка лише для адміна.'))); return; }
+  const draft = JSON.parse(JSON.stringify({ people: ACC.people, roles: ACC.roles }));
+  const status = h('p', { class: 'small muted' });
+  const saveAll = (msg) => { status.textContent = 'Зберігаю…'; window.Cloud.saveAccess(Object.assign({}, ACC, draft)).then(() => { applyAccess(Object.assign({}, ACC, draft)); toast(msg || 'Збережено'); render(); }, e => { status.textContent = 'Помилка: ' + (e.code || e.message); }); };
+  const me = (window.Cloud.email || '').toLowerCase();
+  const rows = Object.entries(draft.people).sort((a, b) => ['admin', 'editor', 'student', 'viewer'].indexOf(draft.roles[a[0]]) - ['admin', 'editor', 'student', 'viewer'].indexOf(draft.roles[b[0]]) || a[1].name.localeCompare(b[1].name)).map(([em, p]) => {
+    const sel = h('select', { class: 'txt', style: 'max-width:150px;min-height:40px', 'aria-label': 'Роль: ' + p.name, disabled: em === me }, ['admin', 'editor', 'student', 'viewer'].map(r => h('option', { value: r, selected: draft.roles[em] === r }, ROLE_UA[r])));
+    sel.addEventListener('change', () => { draft.roles[em] = sel.value; saveAll(p.name + ': ' + ROLE_UA[sel.value]); });
+    const st = stateOf(p.key);
+    return h('div', { class: 'li wrap', style: 'gap:8px' }, h('div', { class: 'col grow', style: 'gap:0;min-width:160px' }, h('span', { class: 'b' }, p.name), h('span', { class: 'tiny muted' }, em + (st ? ' · вогник ' + streakOf(st) : ' · ще не заходив(-ла)'))), sel,
+      em === me ? null : h('button', { class: 'iconbtn', 'aria-label': 'Видалити ' + p.name, onclick: () => dialog('Забрати доступ у ' + p.name + '?', h('p', null, 'Людина більше не зможе увійти. Її прогрес лишиться в базі: якщо додаси знову з тією ж поштою, усе повернеться.'), [['Скасувати', () => { }, 'ghost'], ['Забрати доступ', () => { delete draft.people[em]; delete draft.roles[em]; saveAll('Доступ забрано'); }, 'orange']]) }, icon('x')));
+  });
+  const em = h('input', { class: 'txt', type: 'email', placeholder: 'пошта Gmail', autocomplete: 'off', 'aria-label': 'Пошта' });
+  const nm = h('input', { class: 'txt', placeholder: 'Ім\'я (як показувати)', 'aria-label': 'Ім\'я' });
+  const rl = h('select', { class: 'txt', 'aria-label': 'Роль' }, ['student', 'viewer', 'editor', 'admin'].map(r => h('option', { value: r }, ROLE_UA[r])));
+  const add = () => {
+    const e = em.value.trim().toLowerCase(), n = nm.value.trim();
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e)) { toast('Перевір пошту'); return; }
+    if (!n) { toast('Вкажи ім\'я'); return; }
+    if (draft.people[e]) { toast('Ця пошта вже є'); return; }
+    draft.people[e] = { key: newKey(e), name: n.slice(0, 40) }; draft.roles[e] = rl.value; saveAll(n + ' додано');
+  };
+  main.append(h('div', { class: 'stack', style: 'max-width:820px' }, h('h1', null, 'Учасники'),
+    h('div', { class: 'card' }, h('h3', null, 'Хто має доступ'), h('div', { class: 'list' }, rows), status),
+    h('div', { class: 'card' }, h('h3', null, 'Додати учасника'),
+      h('div', { class: 'col' }, em, nm, h('div', { class: 'spread wrap', style: 'gap:8px' }, rl, h('button', { class: 'btn', onclick: add }, 'Додати'))),
+      h('div', { class: 'note small' }, h('b', null, 'Перший вхід нового учасника. '), 'Firebase → Authentication → Settings → User actions → увімкни «Enable create (sign-up)», дочекайся, поки людина увійде, і вимкни знову.')),
+    h('div', { class: 'card' }, h('h3', null, 'Що вміє кожна роль'), h('ul', { class: 'small', style: 'margin:0;padding-left:20px;line-height:1.7' },
+      h('li', null, h('b', null, 'Адмін: '), 'усе, плюс ця сторінка й можливість сховати чужий вогник.'),
+      h('li', null, h('b', null, 'Редактор: '), 'навчання, «Додати урок», перенесення занять, номер уроку курсу.'),
+      h('li', null, h('b', null, 'Учень: '), 'навчання й заняття курсу (картка заняття, розминка, нагадування). Бачить вогники учнів, редакторів і адміна.'),
+      h('li', null, h('b', null, 'Глядач: '), 'навчання без занять курсу. Бачить вогники всіх, крім інших глядачів; його вогник бачить лише адмін.')))));
+};
 VIEWS.add = main => {
+  if (CLOUD && !canEdit()) { main.append(h('div', { class: 'stack', style: 'max-width:760px' }, h('h1', null, 'Додати урок'), h('p', { class: 'muted' }, 'Уроки додають Діма й Наташа.'))); return; }
   const ta = h('textarea', { class: 'txt', id: 'lessonjson', spellcheck: 'false', placeholder: 'Встав сюди відповідь Claude з JSON уроку…', style: 'min-height:180px;font-family:monospace;font-size:14px' });
   const file = h('input', { type: 'file', accept: '.json,application/json,text/plain', id: 'lessonfile', multiple: true });
   const out = h('div', { class: 'col' });
@@ -2034,11 +2134,12 @@ function copyText(txt, okMsg) {
 function showCopy(txt) { const ta = h('textarea', { class: 'txt', readonly: true, 'aria-label': 'Текст для копіювання' }); ta.value = txt; dialog('Скопіюй вручну', h('div', { class: 'col' }, h('p', { class: 'small' }, 'Виділи весь текст (Ctrl+A) і скопіюй (Ctrl+C).'), ta), [['Готово', () => { }]]); setTimeout(() => { ta.focus(); ta.select(); }, 50); }
 
 VIEWS.howto = main => {
-  const gSel = h('select', { class: 'txt', id: 'gnum', style: 'max-width:200px' }, Array.from({ length: 35 }, (_, i) => h('option', { value: i + 1, selected: i + 1 === Math.min(35, S.course + 1) }, 'Урок ' + (i + 1))));
+  if (CLOUD && !canEdit()) { location.hash = '#today'; return; }
+  const gSel = h('select', { class: 'txt', id: 'gnum', style: 'max-width:200px' }, Array.from({ length: 35 }, (_, i) => h('option', { value: i + 1, selected: i + 1 === Math.min(35, courseNum() + 1) }, 'Урок ' + (i + 1))));
   const rangeOut = h('p', { class: 'b' });
   const upd = () => { const n = +gSel.value; const [p1, p2, b1, b2] = pdfRange(n); rangeOut.textContent = 'Книжкові сторінки ' + b1 + '–' + b2 + ' → сторінки PDF: ' + p1 + '–' + p2; };
   gSel.addEventListener('change', upd); upd();
-  const vNum = h('input', { class: 'txt', id: 'vnum', type: 'number', min: '1', max: '40', value: String(S.course), style: 'max-width:200px' });
+  const vNum = h('input', { class: 'txt', id: 'vnum', type: 'number', min: '1', max: '40', value: String(courseNum()), style: 'max-width:200px' });
   const step = (n, title, ...body) => h('div', { class: 'li', style: 'align-items:flex-start' }, h('span', { class: 'ico g', style: 'font-weight:900' }, n), h('div', { class: 'col grow', style: 'gap:4px' }, h('span', { class: 'b' }, title), ...body.map(x => typeof x === 'string' ? h('span', { class: 'small' }, rich(x)) : x)));
   main.append(h('div', { class: 'stack', style: 'max-width:820px' },
     h('a', { href: '#add', class: 'small b' }, '← Додати урок'),
@@ -2101,7 +2202,13 @@ async function cloudBoot() {
         h('button', { class: 'btn wide', onclick: () => Cl.signIn().catch(e => { if (e.code !== 'auth/popup-closed-by-user' && e.code !== 'auth/cancelled-popup-request') toast('Вхід не вдався: ' + (e.code || e.message)); }) }, 'Увійти через Google'));
       return;
     }
-    const prof = Cl.ALLOWED[String(user.email || '').toLowerCase()];
+    /* список учасників і ролей з бази; адмін при першому вході після оновлення створює його сам */
+    const email = String(user.email || '').toLowerCase();
+    let acc = null;
+    try { acc = await Cl.loadAccess(); } catch (e) { acc = null; }
+    if (!acc && email === Cl.ADMIN && user.emailVerified) { acc = Cl.seedAccess(); try { await Cl.saveAccess(acc); } catch (e) { toast('Не вдалося створити список учасників: ' + (e.code || e.message)); } }
+    applyAccess(acc || Cl.seedAccess());
+    const prof = EMAIL_KEY[email];
     if (!prof || !user.emailVerified) {
       gate(h('h2', null, 'Немає доступу'), h('p', null, 'Акаунт ' + (user.email || '') + ' не має доступу до платформи.'), h('button', { class: 'btn ghost wide', onclick: () => Cl.signOut() }, 'Увійти іншим акаунтом'));
       return;
@@ -2121,7 +2228,7 @@ async function cloudBoot() {
     Cl.watchProgress(list => {
       let changed = false;
       list.forEach(d => {
-        const p2 = Cl.ALLOWED[String(d.email || '').toLowerCase()]; if (!p2) return;
+        const p2 = EMAIL_KEY[String(d.email || '').toLowerCase()]; if (!p2) return;
         let st; try { st = Object.assign(newState(), JSON.parse(d.json)); } catch (e) { return; }
         if (p2 !== PROFILE) { OTHER[p2] = st; ntSync(); return; }
         if (d.id !== UID) return;
@@ -2129,8 +2236,16 @@ async function cloudBoot() {
         if (progressSig(S) !== before) changed = true;
         if (progressSig(S) !== progressSig(st)) { clearTimeout(cloudT); cloudT = setTimeout(pushCloud, 1500); }
       });
+      const first = !OTHERS_IN; OTHERS_IN = true;
       if (!changed && !list.length) return;
-      if ($('#player').hidden && ['today', ''].includes(ROUTE)) render();
+      if ($('#player').hidden && (['today', ''].includes(ROUTE) || (first && ['more', 'people'].includes(ROUTE)))) render();
+    }, () => { });
+    /* зміни ролей, імен і номера уроку курсу приходять одразу; якщо доступ забрали — вихід */
+    Cl.watchAccess(a => {
+      if (!a) return; const before = JSON.stringify([NAMES, ROLES, ACC && ACC.course]);
+      applyAccess(a);
+      if (!EMAIL_KEY[email]) { gate(h('h2', null, 'Доступ закрито'), h('p', null, 'Адмін забрав доступ для ' + email + '.'), h('button', { class: 'btn ghost wide', onclick: () => Cl.signOut() }, 'Вийти')); return; }
+      if (JSON.stringify([NAMES, ROLES, ACC.course]) !== before && $('#player').hidden) render();
     }, () => { });
     ungate(); render();
     ntLoad().then(() => { if (ROUTE === 'more') render(); });
