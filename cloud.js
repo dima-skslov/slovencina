@@ -1,7 +1,7 @@
 /* Шар Firebase: вхід через Google і Firestore. Офіційний SDK з gstatic, версія зафіксована. */
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.18.0/firebase-app.js';
 import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/12.18.0/firebase-auth.js';
-import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, doc, getDoc, setDoc, updateDoc, getDocs, collection, onSnapshot, serverTimestamp } from 'https://www.gstatic.com/firebasejs/12.18.0/firebase-firestore.js';
+import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, doc, getDoc, setDoc, updateDoc, getDocs, arrayUnion, query, where, collection, onSnapshot, serverTimestamp } from 'https://www.gstatic.com/firebasejs/12.18.0/firebase-firestore.js';
 
 const firebaseConfig = {
   apiKey: 'AIzaSyDdKFk4dMekeIxn59bt_e3cOIUR9R6SxxE',
@@ -50,6 +50,12 @@ window.Cloud = {
   },
   /** адмін або редактор: лише номер уроку курсу */
   saveCourse(n) { return updateDoc(accRef(), { course: n, courseBy: auth.currentUser.email, updatedAt: serverTimestamp() }); },
+  /** аналітика: пачка подій дописується в документ користувача за день */
+  logEvents(uid, day, name, v, evs) {
+    return setDoc(doc(db, 'events', uid + '_' + day), { uid, email: auth.currentUser.email, name, day, v, ev: arrayUnion(...evs), updatedAt: serverTimestamp() }, { merge: true });
+  },
+  /** лише адмін: усі події з дня from (YYYY-MM-DD) включно */
+  async loadEvents(from) { const snap = await getDocs(query(collection(db, 'events'), where('day', '>=', from))); return snap.docs.map(d => d.data()); },
   watchAccess(cb, onErr) { return onSnapshot(accRef(), s => cb(s.exists() ? accFrom(s.data()) : null), onErr); },
   onUser(cb) { return onAuthStateChanged(auth, cb); },
   signIn() { const p = new GoogleAuthProvider(); p.setCustomParameters({ prompt: 'select_account' }); return signInWithPopup(auth, p); },

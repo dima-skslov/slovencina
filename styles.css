@@ -78,10 +78,18 @@ p{margin:0;line-height:1.5}
 button.chip{min-height:40px}
 button.chip.on{background:var(--green-l);border-color:var(--ok-b);color:var(--green-ink)}
 
-.streaks{display:flex;gap:10px}
-.streak{flex:1;display:flex;align-items:center;gap:8px;padding:10px 12px;border-radius:16px;background:var(--orange-l)}
-.streak svg{width:22px;height:22px;flex:none}
-.streak .n{font-size:17px;font-weight:900;color:var(--orange-t)}
+.streaks{display:grid;grid-template-columns:repeat(auto-fill,minmax(112px,1fr));gap:8px}
+.streak{display:flex;flex-direction:column;gap:2px;padding:9px 6px 10px 11px;border-radius:16px;background:var(--orange-l);min-width:0}
+.streak .top{display:flex;align-items:center;justify-content:space-between;gap:4px;min-width:0;min-height:26px}
+.streak .nm{font-size:12.5px;font-weight:800;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.streak .val{display:flex;align-items:center;gap:6px;min-width:0}
+.streak svg{width:20px;height:20px;flex:none}
+.streak .n{font-size:17px;font-weight:900;color:var(--orange-t);white-space:nowrap}
+.streak .shide{flex:none;width:24px;height:24px;display:grid;place-items:center;border:0;border-radius:8px;background:transparent;color:var(--muted);cursor:pointer;padding:0}
+.streak .shide:hover{background:rgba(0,0,0,.06)}
+.streak .shide:focus-visible{outline:2px solid var(--green);outline-offset:1px}
+.streak .shide svg{width:15px;height:15px}
+.navtail{margin-top:auto;padding-top:12px;border-top:2px solid var(--line);display:flex;flex-direction:column;gap:2px}
 
 .plan{display:flex;flex-direction:column;gap:10px}
 .planrow{display:flex;gap:12px;align-items:center}
@@ -265,7 +273,7 @@ body{overflow-wrap:break-word}
   .node.rev .dot{box-shadow:0 3px 0 var(--orange-b)}
   .dot svg{width:20px;height:20px}
   .node .lbl{font-size:11px}
-  .streak{padding:8px 10px}
+  .streak{padding:8px 5px 9px 10px}
   .cal{grid-template-columns:auto repeat(14,minmax(0,1fr)) 22px;gap:3px;font-size:13px}
   .cal i{height:16px}
   #pl-body{padding:8px 14px 20px}
@@ -346,3 +354,23 @@ textarea.answer{height:auto;resize:vertical;min-height:62px;line-height:1.4;padd
 .popbtn:focus-visible{outline:2px solid currentColor;outline-offset:2px}
 .pop .popin{background:rgba(255,255,255,.95);color:#1c2620;font-size:16px;padding:8px 10px;min-height:40px}
 .newtip{display:flex;flex-direction:column;align-items:flex-start}
+/* ---------- аналітика ---------- */
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+.stat{background:var(--card);border:2px solid var(--line);border-radius:16px;padding:12px 14px;display:flex;flex-direction:column;gap:2px}
+.stat .sn{font-size:26px;font-weight:900;line-height:1.1;font-variant-numeric:tabular-nums}
+.stat .sl{font-size:13px;font-weight:800;color:var(--muted)}
+.atable{width:100%;border-collapse:collapse;font-size:14px}
+.atable th{text-align:left;font-size:12px;font-weight:800;color:var(--muted);padding:6px 8px;border-bottom:2px solid var(--line);white-space:nowrap}
+.atable td{padding:7px 8px;border-bottom:1px solid var(--line);vertical-align:top;font-variant-numeric:tabular-nums}
+.atable tr:last-child td{border-bottom:0}
+.bchart{position:relative;height:210px;padding:6px 0 0 34px}
+.bchart .grid{position:absolute;inset:6px 0 24px 34px;display:flex;flex-direction:column;justify-content:space-between;pointer-events:none}
+.bchart .gl{border-top:1px solid var(--line);position:relative;height:0}
+.bchart .gl span{position:absolute;left:-34px;top:-8px;width:28px;text-align:right;font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums}
+.bchart .bars{position:absolute;inset:6px 0 0 34px;display:flex;gap:2px;align-items:stretch}
+.bchart .bcol{flex:1;display:flex;flex-direction:column;justify-content:flex-end;min-width:0;padding-bottom:24px;position:relative}
+.bchart .bar{background:var(--green);border-radius:4px 4px 0 0;min-height:0;cursor:pointer;max-width:42px;width:100%;margin:0 auto}
+.bchart .bar.zero{background:transparent}
+.bchart .bar:hover,.bchart .bar:focus-visible{background:var(--green-d);outline:none}
+.bchart .bx{position:absolute;bottom:2px;left:0;right:0;text-align:center;font-size:11px;color:var(--muted);white-space:nowrap}
+.ctip{position:absolute;top:0;width:150px;background:var(--toast-bg);color:var(--toast-ink);border-radius:10px;padding:8px 10px;font-size:13px;z-index:3;pointer-events:none;box-shadow:var(--sheet-shadow)}
