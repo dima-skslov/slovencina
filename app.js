@@ -715,6 +715,17 @@ function exampleFor(text, word) {
   const parts = t.split(/(?<=[.!?…])\s+/); const hit = parts.find(x => x.toLowerCase().includes(word.toLowerCase())) || '';
   return hit.length <= 160 ? hit.replace(/^[–—-]\s*/, '') : '';
 }
+/** чи є слово вже в картках: { L, c, st } для уроку або { mine } для «Моїх слів» */
+function cardOwner(word, g) {
+  const base = cardFromGloss(word, g).sk, w = String(word).toLowerCase().normalize('NFC'), ks = [base, w];
+  const mine = Object.entries(S.mycards || {}).find(([, c]) => !c.gone && ks.includes(String(c.sk).toLowerCase().normalize('NFC')));
+  if (mine) return { mine: true, st: S.cards['my:' + mine[0]] };
+  for (const L of Object.values(C.lessons).sort((a, b) => a.track.localeCompare(b.track) || a.num - b.num)) for (const c of L.cards || []) {
+    const parts = String(c.sk).toLowerCase().normalize('NFC').split(/\s*\/\s*/).map(p => p.replace(/\([^)]*\)/g, '').split(',')[0].trim());
+    if (ks.some(k => parts.includes(k))) return { L, c, st: S.cards[L.id + ':' + c.id] };
+  }
+  return null;
+}
 const stopKeys = el => { el.addEventListener('keydown', e => e.stopPropagation()); return el; };
 /** вміст плашки над словом. ctx — речення, де слово трапилось; onClose — зняти підсвітку */
 function wordPopFill(pop, word, g, ctx, onClose) {
@@ -722,19 +733,20 @@ function wordPopFill(pop, word, g, ctx, onClose) {
   const close = () => { pop.hidden = true; onClose && onClose(); };
   const x = () => h('button', { class: 'iconbtn', type: 'button', 'aria-label': 'Закрити', style: 'color:inherit', onclick: close }, icon('x'));
   const view = () => {
-    const fx = S.fixgloss && S.fixgloss[key] && !S.fixgloss[key].gone;
+    const fx = S.fixgloss && S.fixgloss[key] && !S.fixgloss[key].gone, own = cardOwner(word, g);
+    const lvl = own && own.st ? 'рівень ' + own.st.b : 'ще не вивчене';
     pop.replaceChildren(h('div', { class: 'col grow', style: 'gap:8px' },
       h('span', null, h('b', { lang: 'sk' }, word), ' — ', g, fx ? h('span', { class: 'tiny', style: 'opacity:.7' }, ' (твій переклад)') : null),
       h('div', { class: 'row wrap', style: 'gap:6px' }, speakBtn(word, true),
-        h('button', { class: 'popbtn', type: 'button', onclick: add }, '+ в картки'),
-        h('button', { class: 'popbtn', type: 'button', onclick: fix }, 'Виправити'))), x());
+        own && own.mine ? h('button', { class: 'popbtn', type: 'button', disabled: true, style: 'opacity:.75' }, '✓ у «Моїх словах»') : h('button', { class: 'popbtn', type: 'button', onclick: add }, '+ в картки'),
+        h('button', { class: 'popbtn', type: 'button', onclick: fix }, 'Виправити')),
+      own ? h('span', { class: 'tiny', style: 'opacity:.8' }, own.mine ? 'Уже є в «Моїх словах» · ' + lvl : 'Уже є в картках: ' + (own.L.track === 'g' ? 'граматика' : 'лексика') + ', урок ' + own.L.num + ' («' + own.c.sk + '») · ' + lvl) : null), x());
   };
   const form = (title, fields, actions) => pop.replaceChildren(h('div', { class: 'col grow', style: 'gap:8px' }, h('b', null, title), ...fields, h('div', { class: 'row wrap', style: 'gap:6px' }, actions)), x());
   function add() {
     const base = cardFromGloss(word, g);
-    const dup = Object.values(C.lessons).find(L => (L.cards || []).some(c => String(c.sk).toLowerCase().split(/\s*\/\s*/).map(p => p.replace(/\([^)]*\)/g, '').split(',')[0].trim()).includes(base.sk)));
-    const mine = Object.values(S.mycards || {}).find(c => !c.gone && c.sk.toLowerCase() === base.sk);
-    if (mine) { toast('«' + base.sk + '» уже є в «Моїх словах»'); return; }
+    const own = cardOwner(word, g), dup = own && !own.mine ? own.L : null;
+    if (own && own.mine) { toast('«' + base.sk + '» уже є в «Моїх словах»'); return; }
     const sk = stopKeys(h('input', { class: 'txt popin', lang: 'sk', value: base.sk, 'aria-label': 'Слово словацькою' }));
     const uk = stopKeys(h('input', { class: 'txt popin', value: base.uk, 'aria-label': 'Переклад' }));
     const ok = () => {
@@ -1690,7 +1702,7 @@ VIEWS.more = main => {
       CLOUD ? h('div', null, 'Остання синхронізація: ', h('b', null, (SYNC.at || '—') + ' · ' + ({ ok: 'успішно', err: 'ПОМИЛКА ' + SYNC.err, saving: 'триває', local: 'ще не було' }[SYNC.state] || SYNC.state))) : null,
       h('div', null, 'Пройдено днів: ', h('b', null, Object.keys(S.done).length), ' · карток: ', h('b', null, Object.keys(S.cards).length), ' · серія: ', h('b', null, streakOf(S))),
       h('div', null, 'Дні: ', h('b', null, doneSummary() || '—')))),
-    h('p', { class: 'tiny muted' }, (CLOUD ? 'Версія: 3.2 (28.11)' : 'Версія: пілот 0.5') + ' · уроків завантажено: ' + Object.keys(C.lessons).length + (C.errors.length ? ' · помилка завантаження: ' + C.errors.join(', ') : ''))));
+    h('p', { class: 'tiny muted' }, (CLOUD ? 'Версія: 3.2.1 (28.11)' : 'Версія: пілот 0.5') + ' · уроків завантажено: ' + Object.keys(C.lessons).length + (C.errors.length ? ' · помилка завантаження: ' + C.errors.join(', ') : ''))));
 };
 function showExport(txt) { const ta = h('textarea', { class: 'txt', readonly: true, 'aria-label': 'Копія прогресу' }); ta.value = txt; dialog('Копія прогресу', h('div', { class: 'col' }, h('p', { class: 'small' }, 'Виділи весь текст і скопіюй.'), ta), [['Готово', () => { }]]); }
 function importDialog() {
