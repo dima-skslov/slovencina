@@ -200,7 +200,7 @@ function addLessonObj(L, src) {
   if (E.length) { C.errors.push(src + ': ' + E[0]); return false; }
   storeContent(L); return true;
 }
-function storeContent(L) { if (L.track === 's') C.banks[L.id] = L; else C.lessons[L.id] = L; }
+function storeContent(L) { if (L.track === 's') C.banks[L.id] = L; else C.lessons[L.id] = L; WIDX = null; LEMS = null; GUESS.clear(); }
 const validateAny = L => L && L.track === 's' ? validateBank(L) : validateLesson(L);
 /** банк речень тренажера: {schema:1, id:'s01', track:'s', num:1..5, title, desc, items:[{id, uk, sk:[…], hint}]} */
 function validateBank(L) {
@@ -573,8 +573,10 @@ function feedback(it, res) {
   const foot = $('#pl-foot'); foot.hidden = false; foot.className = 'pl-foot ' + res.status;
   const fb = h('div', { class: 'fb', role: 'status' }, h('div', { class: 't' }, title));
   if (res.status === 'almost') fb.append(h('div', null, 'Правильно: ', highlightMissing(res.answer, res.user), '. Перевір діакритику.'));
-  if (res.status === 'bad' && res.answer) fb.append(h('div', null, 'Правильна відповідь: ', h('b', null, res.answer)));
-  if (res.why) fb.append(h('div', null, h('b', null, (it.task && it.task.whyLabel) || 'Чому: '), rich(res.why)));
+  const fpop = wpop();
+  if (res.status === 'bad' && res.answer) fb.append(h('div', null, 'Правильна відповідь: ', h('b', { lang: 'sk' }, tapText(res.answer, fpop))));
+  if (res.why) fb.append(h('div', null, h('b', null, (it.task && it.task.whyLabel) || 'Чому: '), it.task && it.task.whyLabel ? h('span', { lang: 'sk' }, tapText(res.why, fpop)) : rich(res.why)));
+  if ((res.status === 'bad' && res.answer) || (it.task && it.task.whyLabel)) fb.append(fpop);
   if (res.status !== 'ok' && it.mkey) fb.append(h('div', { class: 'tiny' }, 'Це завдання повернеться в «Помилках».'));
   const nb = h('button', { class: 'btn wide ' + (res.status === 'ok' ? '' : 'orange'), id: 'pl-primary', onclick: next }, res.status === 'ok' ? 'Далі' : 'Зрозуміло');
   foot.replaceChildren(h('div', { class: 'in' }, fb, h('div', { class: 'foot-act' }, nb, h('div', { class: 'keys' }, 'Enter · далі'))));
@@ -624,11 +626,78 @@ function openCheat(L, cheat) {
 function closeCheat() { $('#pl-cheat').hidden = true; $('#pl-scrim').hidden = true; const b = $('#pl-cheatbtn'); if (b) b.setAttribute('aria-expanded', 'false'); }
 
 /* ---------- рендерери завдань ---------- */
-function sentence(sk, blankText) {
-  const parts = String(sk).split('___');
+/* ---------- переклад слова по дотику в завданнях ----------
+   Словник збирається з усіх уроків: словники текстів (форми в контексті), таблиці відмінків і дієвідмін,
+   картки, LEX_EXTRA і службові слова. Перебудовується, коли додається урок. */
+let WIDX = null;
+const CASE_AB = ['N', 'G', 'D', 'A', 'L', 'I'];
+const WORD_EXTRA = { streda: 'середа', neskôr: 'пізніше', skôr: 'раніше', niekde: 'десь', bolí: 'болить', bojí: 'боїться', letia: 'летять', pite: 'пийте', hovor: 'говори', nehovor: 'не говори', kúp: 'купи', prídi: 'прийди', vraví: 'каже', akých: 'яких', akou: 'якою', akom: 'якому', úloha: 'завдання', pravidlo: 'правило', pero: 'ручка', slovník: 'словник', farba: 'колір', list: 'лист', vrch: 'вершина, гора', hobby: 'хобі', kúpil: 'купив', kúpila: 'купила', prišiel: 'прийшов', prišla: 'прийшла', prišli: 'прийшли', išiel: 'пішов', išla: 'пішла', šiel: 'пішов', išli: 'пішли', pôjde: 'піде', pôjdem: 'піду', pôjdeme: 'підемо', nepôjde: 'не піде', stretneme: 'зустрінемося', stretnem: 'зустріну', prídem: 'прийду', prídeš: 'прийдеш', príde: 'прийде', prídeme: 'прийдемо', prídete: 'прийдете', prídu: 'прийдуть', mirko: 'Мірко (ім\'я)', nataša: 'Наташа', petra: 'Петра; Петер (G)', pršalo: 'йшов дощ', prší: 'іде дощ', sneží: 'іде сніг', prvý: 'перший', druhý: 'другий', tretí: 'третій', štvrtý: 'четвертий', piaty: "п'ятий", šiesty: 'шостий', siedmy: 'сьомий', ôsmy: 'восьмий', deviaty: "дев'ятий", desiaty: 'десятий', fajčiť: 'курити', nefajčí: 'не курить', guma: 'гумка', dvere: 'двері', mačka: 'кішка', spí: 'спить', bežím: 'біжу', sadnime: 'сядьмо', vieš: 'знаєш, умієш', viem: 'знаю, умію', vie: 'знає, уміє', nevie: 'не знає, не вміє', smie: 'може (дозволено)', nesmie: 'не можна (йому, їй)', svetlá: 'світла; світло (мн.)', starosti: 'турботи', pohovorím: 'поговорю', úlohy: 'завдання (мн.)', pravdu: 'правду', farby: 'кольори', najlepšia: 'найкраща', menšia: 'менша', väčšia: 'більша', mladšia: 'молодша', staršia: 'старша', vyšší: 'вищий', nižší: 'нижчий' };
+WORD_EXTRA['môžeš'] = 'можеш'; Object.assign(WORD_EXTRA, { šli: 'пішли', nešli: 'не пішли', šla: 'пішла', šlo: 'пішло', nešiel: 'не пішов', nešla: 'не пішла' });
+const FUNC_UK = { a: 'і, а', aj: 'і, також', ale: 'але', alebo: 'або', že: 'що (сполучник)', ako: 'як', kde: 'де', kam: 'куди', kedy: 'коли', čo: 'що', kto: 'хто', prečo: 'чому', koľko: 'скільки', aký: 'який', aká: 'яка', aké: 'яке', v: 'в, у', vo: 'в, у', na: 'на', do: 'до, в', z: 'з', zo: 'з', s: 'з (+I)', so: 'з (+I)', k: 'до (+D)', ku: 'до (+D)', o: 'про (+L); о (час)', po: 'після; по', pri: 'біля (+L)', pre: 'для (+A)', bez: 'без (+G)', od: 'від (+G)', u: 'у, біля (+G)', za: 'за', pred: 'перед', nad: 'над', pod: 'під', medzi: 'між', cez: 'через', okolo: 'навколо, повз', vedľa: 'поруч із (+G)', je: 'є (він, вона, воно)', sú: 'є (вони)', som: 'я є', si: 'ти є; собі', sme: 'ми є', ste: 'ви є', sa: 'себе, -ся', nie: 'ні; не', áno: 'так', už: 'вже', ešte: 'ще', veľmi: 'дуже', tu: 'тут', tam: 'там', dnes: 'сьогодні', zajtra: 'завтра', včera: 'учора', teraz: 'зараз', potom: 'потім', vždy: 'завжди', často: 'часто', nikdy: 'ніколи', ja: 'я', ty: 'ти', on: 'він', ona: 'вона', ono: 'воно', my: 'ми', vy: 'ви', oni: 'вони', ony: 'вони (жін.)', ma: 'мене', ťa: 'тебе', mi: 'мені', ti: 'тобі', mu: 'йому', jej: 'їй; її', ho: 'його', ju: 'її', nás: 'нас', vás: 'вас', ich: 'їх', im: 'їм', môj: 'мій', moja: 'моя', moje: 'моє', tvoj: 'твій', tvoja: 'твоя', náš: 'наш', naša: 'наша', váš: 'ваш', vaša: 'ваша', jeho: 'його', to: 'це, то', ten: 'той, цей', tá: 'та, ця', tento: 'цей', táto: 'ця', toto: 'це', tie: 'ті', ktorý: 'який, котрий', ktorá: 'яка, котра', ktoré: 'яке, котре', veľa: 'багато', málo: 'мало', len: 'тільки', tiež: 'теж', iba: 'лише', prosím: 'будь ласка; прошу', ďakujem: 'дякую', ahoj: 'привіт', dobrý: 'добрий', deň: 'день', ráno: 'ранок, уранці', večer: 'вечір, увечері', mám: 'маю', máš: 'маєш', má: 'має', máme: 'маємо', máte: 'маєте', majú: 'мають', bol: 'був', bola: 'була', bolo: 'було', boli: 'були', bude: 'буде', budem: 'буду', budeš: 'будеш', budeme: 'будемо', budete: 'будете', budú: 'будуть', nemám: 'не маю', nemá: 'не має', ide: 'іде', idem: 'іду', ideme: 'ідемо', idú: 'ідуть', chcem: 'хочу', chce: 'хоче', môžem: 'можу', môže: 'може', musím: 'мушу', musí: 'мусить', rád: 'радий; mám rád = люблю', rada: 'рада; mám rada = люблю', radi: 'раді; máme radi = любимо', pani: 'пані', pán: 'пан', všetko: 'все', všetci: 'всі', niečo: 'щось', nič: 'нічого', niekto: 'хтось', nikto: 'ніхто', tak: 'так', preto: 'тому', lebo: 'бо', keď: 'коли (сполучник)', ak: 'якщо', aby: 'щоб', jeden: 'один', jedna: 'одна', jedno: 'одне', dva: 'два', dve: 'дві', tri: 'три', štyri: 'чотири', päť: "п'ять" };
+function wordIndex() {
+  if (WIDX) return WIDX;
+  const M = new Map(), set = (k, v) => { k = String(k || '').toLowerCase().normalize('NFC').trim(); if (k && v && !M.has(k)) M.set(k, v); };
+  const Ls = Object.values(C.lessons);
+  Object.entries(WORD_EXTRA).forEach(([k, v]) => set(k, v));
+  Ls.forEach(L => Object.entries((L.text && L.text.gloss) || {}).forEach(([k, v]) => set(k, v)));
+  Ls.forEach(L => (L.forms || []).forEach(f => { set(f.lemma, f.uk); ['sg', 'pl'].forEach(num => (f[num] || []).forEach((w, ci) => String(w).split('/').forEach(x => set(x, f.uk + ' (' + CASE_AB[ci] + ' ' + num + ' від ' + f.lemma + ')')))); }));
+  Ls.forEach(L => (L.verbs || []).forEach(v => { set(v.lemma, v.uk); (v.pres || []).forEach(w => set(w, v.uk + ' (' + v.lemma + ')')); (v.fut || []).forEach(w => { if (!/\s/.test(w)) set(w, v.uk + ' (' + v.lemma + ', майб.)'); }); (v.past || []).concat(v.pastf || []).forEach(w => String(w).split(' ')[0].split('/').forEach(x => set(x, v.uk + ' (' + v.lemma + ', мин.)'))); }));
+  Ls.forEach(L => (L.cards || []).forEach(c => { const parts = String(c.sk).split(/\s*\/\s*/), ukp = String(c.uk).split(/\s*\/\s*/); parts.forEach((p, i) => { const w = p.replace(/\([^)]*\)/g, '').split(',')[0].trim(); if (w && !/\s/.test(w)) set(w, cleanUk(ukp.length === parts.length ? ukp[i] : c.uk) || c.uk); }); }));
+  Object.entries(LEX_EXTRA).forEach(([k, v]) => set(k, v)); Object.entries(FUNC_UK).forEach(([k, v]) => set(k, v)); Object.entries(WORD_EXTRA).forEach(([k, v]) => set(k, v));
+  return (WIDX = M);
+}
+/* початкові форми (словникові): лише з карток, таблиць і службових слів — щоб здогадка спиралась на лему, а не на випадкову форму */
+let LEMS = null;
+function lemmaIndex() {
+  if (LEMS && WIDX) return LEMS;
+  const M = new Map(), set = (k, v) => { k = String(k || '').toLowerCase().normalize('NFC').trim(); if (k && v && !/\s/.test(k) && !M.has(k)) M.set(k, cleanUk(v) || v); };
+  Object.values(C.lessons).forEach(L => { (L.forms || []).forEach(f => set(f.lemma, f.uk)); (L.verbs || []).forEach(v => set(v.lemma, v.uk)); (L.cards || []).forEach(c => { const parts = String(c.sk).split(/\s*\/\s*/), ukp = String(c.uk).split(/\s*\/\s*/); parts.forEach((p, i) => set(p.replace(/\([^)]*\)/g, '').split(',')[0].trim(), ukp.length === parts.length ? ukp[i] : c.uk)); }); });
+  Object.entries(LEX_EXTRA).forEach(([k, v]) => set(k, v));
+  return (LEMS = M);
+}
+/* здогадка за закінченням: дієслова (минулий, теперішній, заперечення), іменники й прикметники */
+const VERB_RULES = [[/(.+)(li|la|lo|l)$/, ['ť', 'iť', 'ieť', 'ať', 'nuť']], [/(.+)uj(em|eš|e|eme|ete|ú)$/, ['ovať']], [/(.+)(ám|áš|á|áme|áte|ajú)$/, ['ať']], [/(.+)(ím|íš|í|íme|íte|ia|ja)$/, ['iť', 'ieť', 'ať', 'ť']], [/(.+)(em|eš|e|eme|ete|ú|ú)$/, ['ť', 'ať', 'iť', 'nuť', 'núť']]];
+/** [закінчення форми, закінчення словникової форми]: відмінки іменників і прикметників */
+const NOUN_PAIRS = [['ami', ''], ['ami', 'a'], ['ami', 'o'], ['ách', 'a'], ['ách', 'o'], ['ám', 'a'], ['och', ''], ['och', 'y'], ['ov', ''], ['ovi', ''], ['om', ''], ['om', 'o'], ['mi', ''], ['ou', 'a'], ['ou', 'ý'], ['ej', 'ý'], ['ej', 'a'], ['ého', 'ý'], ['ému', 'ý'], ['ým', 'ý'], ['ých', 'ý'], ['ými', 'ý'], ['ím', 'í'], ['ích', 'í'], ['ími', 'í'], ['ieho', 'í'], ['iemu', 'í'], ['ia', 'ie'], ['ia', 'í'], ['ie', 'ia'], ['iu', 'ia'], ['ii', 'ia'], ['í', 'ie'], ['í', 'ý'], ['é', 'ý'], ['á', 'ý'], ['u', ''], ['u', 'a'], ['u', 'o'], ['a', ''], ['a', 'o'], ['y', 'a'], ['y', ''], ['e', 'a'], ['e', ''], ['e', 'o'], ['i', ''], ['i', 'a'], ['i', 'ý']];
+function guessLemma(w) {
+  const LM = lemmaIndex();
+  const tryV = x => { for (const [re, ends] of VERB_RULES) { const m = re.exec(x); if (!m) continue; const st = m[1]; if (st.length < 2) continue; for (const e of ends) for (const s2 of [st, st.replace(/e$/, 'ie'), st.replace(/ie$/, 'e'), st.replace(/ô/, 'o')]) { const k = s2 + e; if (LM.has(k)) return k; } } return null; };
+  const tryN = x => { for (const [e, l] of NOUN_PAIRS) { if (!x.endsWith(e)) continue; const st = x.slice(0, -e.length); if (st.length < 2) continue; for (const s2 of [st, st.replace(/([^aeiouyáéíóúýrl])([cknl])$/, '$1e$2'), st.replace(/c$/, 'k'), st.replace(/o([^aeiouyáéíóúý])$/, 'ô$1')]) { const k = s2 + l; if (k !== x && LM.has(k)) return k; } } return null; };
+  let k = tryV(w) || tryN(w); if (k) return { k };
+  if (w.startsWith('ne') && w.length > 4) { const r = w.slice(2); k = LM.has(r) && /ť$/.test(r) ? r : tryV(r); if (k) return { k, neg: true }; }
+  return null;
+}
+const GUESS = new Map();
+function glossOf(w) {
+  w = String(w || '').toLowerCase().normalize('NFC'); if (!w) return null;
+  const g = wordIndex().get(w); if (g) return g;
+  if (w.length < 3) return null;
+  if (!GUESS.has(w) || !LEMS) { const r = guessLemma(w); GUESS.set(w, r ? (r.neg ? 'не ' : '') + lemmaIndex().get(r.k) + ' (форма від ' + (r.neg ? 'ne' : '') + r.k + ')' : null); }
+  return GUESS.get(w);
+}
+/** словацький текст, де кожне слово зі словника — кнопка; переклад у плашці pop під текстом */
+function tapText(text, pop) {
+  const f = document.createDocumentFragment();
+  String(text || '').split(/(\*\*[^*]+\*\*)/).forEach(seg => {
+    const bold = seg.startsWith('**') && seg.endsWith('**') && seg.length > 4; const host = bold ? h('b') : f; if (bold) seg = seg.slice(2, -2);
+    seg.split(/(\s+)/).forEach(tok => {
+      const m = tok.match(/^([„“"(«–—-]*)(.*?)([.,!?;:)“"”»…→]*)$/); const word = m ? m[2] : tok, g = word && /[a-záäčďéíĺľňóôŕšťúýž]/i.test(word) ? glossOf(word) : null;
+      if (!g || !pop) { host.append(tok); return; }
+      if (m[1]) host.append(m[1]);
+      const b = h('button', { class: 'w', type: 'button', onclick: e => { e.stopPropagation(); const was = b.classList.contains('on'); document.querySelectorAll('.w.on').forEach(x => x.classList.remove('on')); if (was) { pop.hidden = true; return; } b.classList.add('on'); pop.replaceChildren(h('span', null, h('b', { lang: 'sk' }, word), ' — ', g), h('div', { class: 'row', style: 'gap:4px' }, speakBtn(word, true), h('button', { class: 'iconbtn', type: 'button', 'aria-label': 'Закрити', style: 'color:inherit', onclick: () => { pop.hidden = true; b.classList.remove('on'); } }, icon('x')))); pop.hidden = false; } }, word);
+      host.append(b); if (m[3]) host.append(m[3]);
+    });
+    if (bold) f.append(host);
+  });
+  return f;
+}
+const wpop = () => h('div', { class: 'pop wpop', hidden: true, role: 'status' });
+/** речення завдання; tap=false — коли саме значення слів і є питанням (варіанти українською) */
+function sentence(sk, blankText, tap = true) {
+  const parts = String(sk).split('___'), pop = tap ? wpop() : null;
   const el = h('div', { class: 'sent', lang: 'sk' });
-  parts.forEach((p, i) => { el.append(rich(p)); if (i < parts.length - 1) el.append(h('span', { class: 'blank' }, blankText || ' ')); });
-  return el;
+  parts.forEach((p, i) => { el.append(pop ? tapText(p, pop) : rich(p)); if (i < parts.length - 1) el.append(h('span', { class: 'blank' }, blankText || ' ')); });
+  return pop ? h('div', { class: 'col sentwrap', style: 'gap:8px' }, el, pop) : el;
 }
 function diaBar(input) {
   return h('div', { class: 'dia', 'aria-label': 'Літери з діакритикою' }, DIA.map(ch => h('button', { type: 'button', tabindex: '-1', onmousedown: e => e.preventDefault(), onclick: () => {
@@ -697,7 +766,7 @@ RENDER.choice = (it, root) => {
   const blank = h('span');
   put(root, h('h1', null, t.q || 'Обери відповідь'));
   let sentEl = null;
-  if (t.sk) { sentEl = sentence(t.sk); put(root, sentEl); }
+  if (t.sk) { sentEl = sentence(t.sk, null, !t.o.some(x => CYR.test(x))); put(root, sentEl); }
   const hw = hintEl(t); if (hw) put(root, hw);
   const btns = order.map((oi, k) => h('button', { class: 'opt', onclick: () => pick(k) }, h('span', { class: 'k' }, k + 1), h('span', { lang: 'sk' }, t.o[oi])));
   put(root, h('div', { class: 'opts' + (t.o.every(x => x.length < 22) ? ' two' : '') }, btns));
@@ -741,6 +810,17 @@ function lexLookup(L, key) {
   for (const X of Ls) { const g = X && X.text && X.text.gloss; if (g && g[k]) { const m = /від\s+([a-záäčďéíĺľňóôŕšťúýž]+)/i.exec(g[k]); return { sk: m ? m[1] : null, uk: g[k] }; } }
   return null;
 }
+/** однина / множина для пропуску-іменника: з підказки («мн.», «одн.») або з таблиць відмінків уроків; null — якщо невідомо */
+function blankNum(t) {
+  const hint = String(t.hint || '');
+  if (/(^|[\s,(])(мн\.|множ)/i.test(hint)) return 'множина';
+  if (/(^|[\s,(])(одн\.|однин)/i.test(hint)) return 'однина';
+  const a = String((t.a || [])[0] || '').toLowerCase().normalize('NFC'), lemma = hint.replace(/\([^)]*\)/g, '').split(',')[0].trim().toLowerCase();
+  if (!a) return null;
+  const nums = new Set();
+  Object.values(C.lessons).forEach(L => (L.forms || []).forEach(f => { if (lemma && f.lemma.toLowerCase() !== lemma) return; ['sg', 'pl'].forEach(n => { if ((f[n] || []).some(w => String(w).toLowerCase().split('/').includes(a))) nums.add(n); }); }));
+  return nums.size === 1 ? (nums.has('pl') ? 'множина' : 'однина') : null;
+}
 /** { uk: переклад слова (видно одразу), sk: словацька основа, note: оригінальна підказка } */
 function blankWord(L, t) {
   const hint = String(t.hint || '').trim(), first = hint.replace(/\([^)]*\)/g, '').split(',')[0].trim();
@@ -770,7 +850,8 @@ RENDER.input = (it, root) => {
   // тренажер форм (showHint): що саме потрібно — одразу на синій плашці, без кнопки «Підказка»
   if (t.showHint && (t.hint || t.uk)) put(root, h('div', { class: 'wordhint' }, t.hint ? h('b', { lang: 'sk' }, t.hint) : null, t.hint && t.uk ? ' · ' : null, t.uk ? '«' + t.uk + '»' : null));
   const bw = !t.showHint && String(t.sk || '').includes('___') ? blankWord(it.L, t) : null;
-  if (bw && bw.uk) put(root, h('div', { class: 'wordhint' }, 'Слово: ', h('b', null, bw.uk)));
+  const bn = bw ? blankNum(t) : null;
+  if (bw && bw.uk) put(root, h('div', { class: 'wordhint' }, 'Слово: ', h('b', null, bw.uk), bn ? ' · ' + bn : ''));
   const hw = t.showHint ? null : hintEl(bw && bw.uk ? { hint: CYR.test(bw.note.replace(/\([^)]*\)/g, '').split(',')[0]) ? bw.sk : bw.note, uk: t.uk } : t); if (hw) put(root, hw);
   const inp = h('input', { class: 'answer', id: 'ans', type: 'text', autocomplete: 'off', autocapitalize: 'off', spellcheck: 'false', lang: 'sk', 'aria-label': 'Твоя відповідь', oninput: () => enablePrimary(inp.value.trim().length > 0) });
   put(root, h('div', { class: 'col' }, h('label', { for: 'ans', class: 'small b muted' }, 'Твоя відповідь'), inp, diaBar(inp)));
@@ -869,7 +950,7 @@ RENDER.dict = (it, root) => {
 RENDER.speak = (it, root) => {
   const t = it.task; const voice = canSay(); const hide = t.mode === 'repeat' && voice;
   put(root, h('h1', null, hide ? 'Послухай і повтори вголос' : 'Прочитай уголос'));
-  const txt = h('div', { class: 'sent', lang: 'sk', hidden: hide }, t.sk);
+  const spop = wpop(); const txt = h('div', { class: 'col', style: 'gap:8px', hidden: hide }, h('div', { class: 'sent', lang: 'sk' }, tapText(t.sk, spop)), spop);
   const uk = h('div', { class: 'muted small', hidden: true }, t.uk || '');
   put(root, txt);
   const row = h('div', { class: 'row wrap' });
@@ -981,7 +1062,7 @@ RENDER.det = (it, root) => {
   put(root, h('h1', null, t.q || 'Визначник: крок за кроком'));
   let sentEl = null;
   if (t.sk) { sentEl = sentence(t.sk); put(root, sentEl); }
-  put(root, h('div', { class: 'hint' }, 'Слово: ', h('b', { lang: 'sk' }, t.word), t.wuk ? ' (' + t.wuk + ')' : '', t.prep ? ' · прийменник: ' : '', t.prep ? h('b', null, t.prep) : null));
+  put(root, h('div', { class: 'wordhint' }, 'Слово: ', h('b', { lang: 'sk' }, t.word), t.wuk ? ' (' + t.wuk + ')' : '', t.prep ? ' · прийменник: ' : '', t.prep ? h('b', { lang: 'sk' }, t.prep) : null, t.num ? ' · ' + (t.num === 'pl' ? 'множина' : 'однина') : ''));
   const steps = h('div', { class: 'steps' }); put(root, steps);
   const ans = {};
   const flow = [
@@ -989,9 +1070,9 @@ RENDER.det = (it, root) => {
     { k: 'anim', q: 'Це істота (людина, тварина)?', when: () => ans.g === 'm', opts: () => [['1', 'так, істота'], ['0', 'ні, неістота']], right: t.g ? (t.anim ? '1' : '0') : undefined, why: () => '«' + t.word + '»: ' + (t.anim ? 'істота' : 'неістота') + '.', label: v => v === '1' ? 'Істота' : 'Неістота' },
     { k: 'vzor', q: 'Як закінчується «' + t.word + '»? (від цього залежить взор)', opts: () => endOptions(ans.g, ans.anim === '1'), right: t.vzor, why: () => '«' + t.word + '» відмінюється за взором ' + t.vzor + '.', label: v => 'Взор: ' + v },
     { k: 'case', q: t.prep ? 'Який відмінок вимагає «' + t.prep + '»?' : 'Який відмінок потрібен у реченні?', opts: () => CASES.filter(c => c[0] !== 'N'), right: caseRight, why: () => (t.prep ? '«' + t.prep + '» вимагає ' : 'Тут потрібен ') + (Array.isArray(caseRight) ? caseRight.map(c => CNAME[c]).join(' або ') + (PREP_NOTE[prepKey] ? ' (' + PREP_NOTE[prepKey] + ')' : '') : CNAME[caseRight]) + '.', label: v => 'Відмінок: ' + CNAME[v] },
-    { k: 'num', q: 'Однина чи множина?', opts: () => [['sg', 'однина'], ['pl', 'множина']], right: t.num, why: () => 'Тут ' + (t.num === 'sg' ? 'однина' : 'множина') + '.', label: v => v === 'sg' ? 'Однина' : 'Множина' }
+    { k: 'num', when: () => !t.num, q: 'Однина чи множина?', opts: () => [['sg', 'однина'], ['pl', 'множина']], right: t.num, why: () => 'Тут ' + (t.num === 'sg' ? 'однина' : 'множина') + '.', label: v => v === 'sg' ? 'Однина' : 'Множина' }
   ];
-  let si = 0, curBtns = [];
+  let si = 0, curBtns = []; if (t.num) ans.num = t.num;
   const inp = h('input', { class: 'answer', id: 'detans', type: 'text', autocomplete: 'off', autocapitalize: 'off', spellcheck: 'false', lang: 'sk', 'aria-label': 'Форма слова', oninput: () => enablePrimary(inp.value.trim().length > 0) });
   function step() {
     while (si < flow.length && flow[si].when && !flow[si].when()) si++;
@@ -1534,7 +1615,7 @@ VIEWS.more = main => {
       CLOUD ? h('div', null, 'Остання синхронізація: ', h('b', null, (SYNC.at || '—') + ' · ' + ({ ok: 'успішно', err: 'ПОМИЛКА ' + SYNC.err, saving: 'триває', local: 'ще не було' }[SYNC.state] || SYNC.state))) : null,
       h('div', null, 'Пройдено днів: ', h('b', null, Object.keys(S.done).length), ' · карток: ', h('b', null, Object.keys(S.cards).length), ' · серія: ', h('b', null, streakOf(S))),
       h('div', null, 'Дні: ', h('b', null, doneSummary() || '—')))),
-    h('p', { class: 'tiny muted' }, (CLOUD ? 'Версія: 3.0.5 (27.11)' : 'Версія: пілот 0.5') + ' · уроків завантажено: ' + Object.keys(C.lessons).length + (C.errors.length ? ' · помилка завантаження: ' + C.errors.join(', ') : ''))));
+    h('p', { class: 'tiny muted' }, (CLOUD ? 'Версія: 3.1 (28.11)' : 'Версія: пілот 0.5') + ' · уроків завантажено: ' + Object.keys(C.lessons).length + (C.errors.length ? ' · помилка завантаження: ' + C.errors.join(', ') : ''))));
 };
 function showExport(txt) { const ta = h('textarea', { class: 'txt', readonly: true, 'aria-label': 'Копія прогресу' }); ta.value = txt; dialog('Копія прогресу', h('div', { class: 'col' }, h('p', { class: 'small' }, 'Виділи весь текст і скопіюй.'), ta), [['Готово', () => { }]]); }
 function importDialog() {
