@@ -174,10 +174,13 @@ function mergeState(a, b) {
   out.fixes = Object.assign({}, older.fixes || {}, newer.fixes || {});
   out.moves = {}; [older, newer].forEach(st => Object.entries(st.moves || {}).forEach(([k, v]) => { if (!out.moves[k] || (v.ts || 0) > (out.moves[k].ts || 0)) out.moves[k] = v; }));
   const lg = {}; [older, newer].forEach(st => (st.classLog || []).forEach(e => { lg[e.ts + '|' + e.slot] = e; })); out.classLog = Object.values(lg).sort((x, y) => x.ts - y.ts).slice(-300);
+  /* мої слова й виправлені переклади: на кожен запис перемагає новіший (ts), видалення — запис {gone:true} */
+  ['mycards', 'fixgloss'].forEach(f => { out[f] = {}; [older, newer].forEach(st => Object.entries(st[f] || {}).forEach(([k, v]) => { if (!out[f][k] || (v.ts || 0) >= (out[f][k].ts || 0)) out[f][k] = v; })); });
+  out.news = Object.assign({}, older.news || {}, newer.news || {});
   out.rev = Math.max(a.rev || 0, b.rev || 0);
   return out;
 }
-const progressSig = st => Object.keys(st.done || {}).length + '|' + Object.keys(st.sessions || {}).length + '|' + Object.keys(st.cards || {}).length + '|' + Object.keys(st.mistakes || {}).length + '|' + Object.values(st.moves || {}).reduce((x, m) => Math.max(x, m.ts || 0), 0);
+const progressSig = st => Object.keys(st.mycards || {}).length + ':' + Object.keys(st.fixgloss || {}).length + '|' + Object.keys(st.done || {}).length + '|' + Object.keys(st.sessions || {}).length + '|' + Object.keys(st.cards || {}).length + '|' + Object.keys(st.mistakes || {}).length + '|' + Object.values(st.moves || {}).reduce((x, m) => Math.max(x, m.ts || 0), 0);
 function save() {
   S.rev = Date.now(); Store.set('p.' + PROFILE, S);
   if (CLOUD && UID && window.Cloud) { clearTimeout(cloudT); cloudT = setTimeout(pushCloud, 1500); ntSync(); }
@@ -248,7 +251,9 @@ function lessonProgress(L) { return L.days.filter(d => isDone(L, d)).length; }
 /* ---------- інтервальне повторення ---------- */
 function srsLearn(L, c, knew) { const k = L.id + ':' + c.id; if (S.cards[k] && !knew) { S.cards[k].b = 1; S.cards[k].due = addDays(today(), 1); return; } if (S.cards[k] && (S.cards[k].b || 1) >= 2) return; /* «вже знаю» не знижує вищий рівень */ S.cards[k] = { b: knew ? 2 : 1, due: addDays(today(), knew ? 2 : 1) }; }
 function srsReview(key, ok) { const c = S.cards[key] || { b: 1 }; c.b = ok ? Math.min(c.b + 1, 6) : 1; c.due = addDays(today(), ok ? SRS_IV[c.b] : 1); S.cards[key] = c; }
-function cardFromKey(key) { const [l, id] = key.split(':'); const L = C.lessons[l]; const c = L && cardById(L, id); return c ? { L, c, key } : null; }
+/** мої слова: віртуальний «урок» з картками, які додав сам (S.mycards) */
+function myLesson() { return { id: 'my', track: 'm', num: 0, title: 'Мої слова', cheats: [], days: [], cards: Object.entries(S.mycards || {}).filter(([, c]) => !c.gone).map(([id, c]) => ({ id, sk: c.sk, uk: c.uk, ex: c.ex || '' })) }; }
+function cardFromKey(key) { const [l, id] = key.split(':'); const L = l === 'my' ? myLesson() : C.lessons[l]; const c = L && cardById(L, id); return c ? { L, c, key } : null; }
 function dueCards() { const t = today(); return Object.keys(S.cards).filter(k => S.cards[k].due <= t).map(cardFromKey).filter(Boolean); }
 /** 65% картки поточних уроків, 35% старі (40% при 10+ старих помилках) */
 function pickCards(list, n) {
@@ -511,7 +516,7 @@ async function slotPull(force) {
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') { if (slotT) slotFlush(); } else if ($('#player').hidden) slotPull(); });
 function resumeSession(s) {
   s = s || savedSession(); if (!s) return false;
-  const items = s.items.map(o => Object.assign({}, o, { L: o.L ? C.lessons[o.L] || null : null }));
+  const items = s.items.map(o => Object.assign({}, o, { L: o.L === 'my' ? myLesson() : o.L ? C.lessons[o.L] || null : null }));
   if (items.some((it, k) => s.items[k].L && !it.L)) { dropSession(s.resumeKey); toast('Урок змінився, сесію почато заново'); return false; }
   let i = s.i; if (items[i] && items[i].answered) i++;
   PL.items = items; PL.parts = s.parts;
@@ -540,12 +545,18 @@ function showItem() {
   const cb = $('#pl-cheatbtn'); cb.hidden = !cheat; cb.onclick = () => openCheat(it.L, cheat);
   const body = $('#pl-body'); body.replaceChildren(); body.scrollTop = 0;
   const inner = h('div', { class: 'pl-inner' });
-  const kick = !it.L && it.task && it.task.kick ? h('div', { class: 'kicker' }, it.task.kick + (it.fromMistakes ? ' · помилка' : '') + (it.retry ? ' · ще раз' : '')) : it.L ? h('div', { class: 'kicker' + (it.L.track === 'v' ? ' v' : '') }, (it.L.track === 'g' ? 'Граматика' : 'Лексика') + ' · урок ' + it.L.num + (it.fromMistakes ? ' · помилка' : '') + (it.mini ? ' · повтор' : '') + (it.retry ? ' · ще раз' : '')) : null;
+  const kick = !it.L && it.task && it.task.kick ? h('div', { class: 'kicker' }, it.task.kick + (it.fromMistakes ? ' · помилка' : '') + (it.retry ? ' · ще раз' : '')) : it.L ? h('div', { class: 'kicker' + (it.L.track === 'v' ? ' v' : '') }, (it.L.id === 'my' ? 'Мої слова' : (it.L.track === 'g' ? 'Граматика' : 'Лексика') + ' · урок ' + it.L.num) + (it.fromMistakes ? ' · помилка' : '') + (it.mini ? ' · повтор' : '') + (it.retry ? ' · ще раз' : '')) : null;
   if (kick) inner.append(kick);
   body.append(inner);
   const R = RENDER[it.type];
   if (!R) { next(); return; }
   PL.ctl = R(it, inner) || {};
+  /* новинка: показуємо один раз кожному, коли в завданні є слова, які можна натиснути */
+  if (!(S.news && S.news.tap) && inner.querySelector('.sent .w')) {
+    const tip = h('div', { class: 'note small newtip' }, h('span', null, h('b', null, 'Новинка. '), 'Натисни на будь-яке слово в реченні: з\'явиться переклад. Там же слово можна додати в картки («Мої слова») або виправити переклад.'),
+      h('button', { class: 'btn small', style: 'margin-top:8px', onclick: () => { S.news = Object.assign({}, S.news, { tap: today() }); save(); tip.remove(); } }, 'Зрозуміло'));
+    const sw = inner.querySelector('.sentwrap') || inner.querySelector('.sent'); if (sw) sw.after(tip); else inner.append(tip);
+  }
   setFoot(PL.ctl.primary || null);
   snapSession();
   const fe = PL.ctl.focus; if (fe) setTimeout(() => { if (fe.isConnected) fe.focus(); }, 30);
@@ -670,13 +681,14 @@ function guessLemma(w) {
 const GUESS = new Map();
 function glossOf(w) {
   w = String(w || '').toLowerCase().normalize('NFC'); if (!w) return null;
+  const fx = S && S.fixgloss && S.fixgloss[w]; if (fx && !fx.gone && fx.uk) return fx.uk;
   const g = wordIndex().get(w); if (g) return g;
   if (w.length < 3) return null;
   if (!GUESS.has(w) || !LEMS) { const r = guessLemma(w); GUESS.set(w, r ? (r.neg ? 'не ' : '') + lemmaIndex().get(r.k) + ' (форма від ' + (r.neg ? 'ne' : '') + r.k + ')' : null); }
   return GUESS.get(w);
 }
 /** словацький текст, де кожне слово зі словника — кнопка; переклад у плашці pop під текстом */
-function tapText(text, pop) {
+function tapText(text, pop, ctx) {
   const f = document.createDocumentFragment();
   String(text || '').split(/(\*\*[^*]+\*\*)/).forEach(seg => {
     const bold = seg.startsWith('**') && seg.endsWith('**') && seg.length > 4; const host = bold ? h('b') : f; if (bold) seg = seg.slice(2, -2);
@@ -684,7 +696,7 @@ function tapText(text, pop) {
       const m = tok.match(/^([„“"(«–—-]*)(.*?)([.,!?;:)“"”»…→]*)$/); const word = m ? m[2] : tok, g = word && /[a-záäčďéíĺľňóôŕšťúýž]/i.test(word) ? glossOf(word) : null;
       if (!g || !pop) { host.append(tok); return; }
       if (m[1]) host.append(m[1]);
-      const b = h('button', { class: 'w', type: 'button', onclick: e => { e.stopPropagation(); const was = b.classList.contains('on'); document.querySelectorAll('.w.on').forEach(x => x.classList.remove('on')); if (was) { pop.hidden = true; return; } b.classList.add('on'); pop.replaceChildren(h('span', null, h('b', { lang: 'sk' }, word), ' — ', g), h('div', { class: 'row', style: 'gap:4px' }, speakBtn(word, true), h('button', { class: 'iconbtn', type: 'button', 'aria-label': 'Закрити', style: 'color:inherit', onclick: () => { pop.hidden = true; b.classList.remove('on'); } }, icon('x')))); pop.hidden = false; } }, word);
+      const b = h('button', { class: 'w', type: 'button', onclick: e => { e.stopPropagation(); const was = b.classList.contains('on'); document.querySelectorAll('.w.on').forEach(x => x.classList.remove('on')); if (was) { pop.hidden = true; return; } b.classList.add('on'); wordPopFill(pop, word, glossOf(word) || g, ctx || text, () => b.classList.remove('on')); } }, word);
       host.append(b); if (m[3]) host.append(m[3]);
     });
     if (bold) f.append(host);
@@ -692,11 +704,69 @@ function tapText(text, pop) {
   return f;
 }
 const wpop = () => h('div', { class: 'pop wpop', hidden: true, role: 'status' });
+/** початкова форма й переклад для картки з рядка перекладу: «фільм (L pl від film)» → film / фільм */
+function cardFromGloss(word, g) {
+  const m = /від\s+([a-záäčďéíĺľňóôŕšťúýž]+)\)?\s*$/i.exec(String(g)); const uk = String(g).replace(/\s*\([^)]*\)\s*$/, '').trim();
+  return { sk: m ? m[1] : word.toLowerCase(), uk: uk || g };
+}
+/** речення з тексту, де трапилось слово (для прикладу на картці) */
+function exampleFor(text, word) {
+  const t = String(text || '').replace(/\*\*/g, ''); if (t.includes('___')) return '';
+  const parts = t.split(/(?<=[.!?…])\s+/); const hit = parts.find(x => x.toLowerCase().includes(word.toLowerCase())) || '';
+  return hit.length <= 160 ? hit.replace(/^[–—-]\s*/, '') : '';
+}
+const stopKeys = el => { el.addEventListener('keydown', e => e.stopPropagation()); return el; };
+/** вміст плашки над словом. ctx — речення, де слово трапилось; onClose — зняти підсвітку */
+function wordPopFill(pop, word, g, ctx, onClose) {
+  const key = word.toLowerCase().normalize('NFC');
+  const close = () => { pop.hidden = true; onClose && onClose(); };
+  const x = () => h('button', { class: 'iconbtn', type: 'button', 'aria-label': 'Закрити', style: 'color:inherit', onclick: close }, icon('x'));
+  const view = () => {
+    const fx = S.fixgloss && S.fixgloss[key] && !S.fixgloss[key].gone;
+    pop.replaceChildren(h('div', { class: 'col grow', style: 'gap:8px' },
+      h('span', null, h('b', { lang: 'sk' }, word), ' — ', g, fx ? h('span', { class: 'tiny', style: 'opacity:.7' }, ' (твій переклад)') : null),
+      h('div', { class: 'row wrap', style: 'gap:6px' }, speakBtn(word, true),
+        h('button', { class: 'popbtn', type: 'button', onclick: add }, '+ в картки'),
+        h('button', { class: 'popbtn', type: 'button', onclick: fix }, 'Виправити'))), x());
+  };
+  const form = (title, fields, actions) => pop.replaceChildren(h('div', { class: 'col grow', style: 'gap:8px' }, h('b', null, title), ...fields, h('div', { class: 'row wrap', style: 'gap:6px' }, actions)), x());
+  function add() {
+    const base = cardFromGloss(word, g);
+    const dup = Object.values(C.lessons).find(L => (L.cards || []).some(c => String(c.sk).toLowerCase().split(/\s*\/\s*/).map(p => p.replace(/\([^)]*\)/g, '').split(',')[0].trim()).includes(base.sk)));
+    const mine = Object.values(S.mycards || {}).find(c => !c.gone && c.sk.toLowerCase() === base.sk);
+    if (mine) { toast('«' + base.sk + '» уже є в «Моїх словах»'); return; }
+    const sk = stopKeys(h('input', { class: 'txt popin', lang: 'sk', value: base.sk, 'aria-label': 'Слово словацькою' }));
+    const uk = stopKeys(h('input', { class: 'txt popin', value: base.uk, 'aria-label': 'Переклад' }));
+    const ok = () => {
+      const a = sk.value.trim(), b = uk.value.trim(); if (!a || !b) { toast('Заповни слово й переклад'); return; }
+      const id = 'w' + Date.now().toString(36); S.mycards = S.mycards || {};
+      S.mycards[id] = { sk: a, uk: b, ex: exampleFor(ctx, word), ts: Date.now() };
+      S.cards['my:' + id] = { b: 1, due: addDays(today(), 1) }; save();
+      toast('Додано в «Мої слова»: повтор завтра'); view();
+    };
+    [sk, uk].forEach(i => i.addEventListener('keydown', e => { if (e.key === 'Enter') ok(); }));
+    form('Додати в картки', [dup ? h('span', { class: 'tiny', style: 'opacity:.8' }, 'Це слово вже є в картках уроку ' + dup.num + ', але можна додати й до своїх.') : null, sk, uk].filter(Boolean),
+      [h('button', { class: 'popbtn on', type: 'button', onclick: ok }, 'Додати'), h('button', { class: 'popbtn', type: 'button', onclick: view }, 'Скасувати')]);
+    setTimeout(() => uk.focus(), 30);
+  }
+  function fix() {
+    const has = S.fixgloss && S.fixgloss[key] && !S.fixgloss[key].gone;
+    const uk = stopKeys(h('input', { class: 'txt popin', value: g, 'aria-label': 'Правильний переклад' }));
+    const ok = () => { const v = uk.value.trim(); if (!v) return; S.fixgloss = S.fixgloss || {}; S.fixgloss[key] = { uk: v, ts: Date.now() }; save(); g = v; toast('Переклад виправлено'); view(); };
+    uk.addEventListener('keydown', e => { if (e.key === 'Enter') ok(); });
+    form('Правильний переклад «' + word + '»', [uk],
+      [h('button', { class: 'popbtn on', type: 'button', onclick: ok }, 'Зберегти'),
+       has ? h('button', { class: 'popbtn', type: 'button', onclick: () => { S.fixgloss[key] = { gone: true, ts: Date.now() }; save(); WIDX = null; GUESS.clear(); g = glossOf(word) || g; toast('Повернуто переклад платформи'); view(); } }, 'Повернути як було') : null,
+       h('button', { class: 'popbtn', type: 'button', onclick: view }, 'Скасувати')].filter(Boolean));
+    setTimeout(() => { uk.focus(); uk.select(); }, 30);
+  }
+  view(); pop.hidden = false;
+}
 /** речення завдання; tap=false — коли саме значення слів і є питанням (варіанти українською) */
 function sentence(sk, blankText, tap = true) {
   const parts = String(sk).split('___'), pop = tap ? wpop() : null;
   const el = h('div', { class: 'sent', lang: 'sk' });
-  parts.forEach((p, i) => { el.append(pop ? tapText(p, pop) : rich(p)); if (i < parts.length - 1) el.append(h('span', { class: 'blank' }, blankText || ' ')); });
+  parts.forEach((p, i) => { el.append(pop ? tapText(p, pop, sk) : rich(p)); if (i < parts.length - 1) el.append(h('span', { class: 'blank' }, blankText || ' ')); });
   return pop ? h('div', { class: 'col sentwrap', style: 'gap:8px' }, el, pop) : el;
 }
 function diaBar(input) {
@@ -1002,9 +1072,10 @@ function paraEl(tx, pi, pop) {
       if (/^\s+$/.test(tok)) { ln.append(tok); return; }
       const m = tok.match(/^([„“"(]*)(.*?)([.,!?;:)“"”…]*)$/);
       const word = m ? m[2] : tok; const key = word.toLowerCase();
-      if (!word || !tx.gloss || !tx.gloss[key]) { ln.append(tok); return; }
+      const fx = S.fixgloss && S.fixgloss[key] && !S.fixgloss[key].gone ? S.fixgloss[key].uk : null;
+      if (!word || !tx.gloss || !(fx || tx.gloss[key])) { ln.append(tok); return; }
       const nw = h('span', { style: 'white-space:nowrap' }); if (m[1]) nw.append(m[1]);
-      const b = h('button', { class: 'w', onclick: () => { document.querySelectorAll('.w.on').forEach(x => x.classList.remove('on')); b.classList.add('on'); pop.replaceChildren(h('span', null, h('b', { lang: 'sk' }, word), ' — ', tx.gloss[key]), h('div', { class: 'row', style: 'gap:4px' }, speakBtn(word, true), h('button', { class: 'iconbtn', 'aria-label': 'Закрити', style: 'color:#fff', onclick: () => { pop.hidden = true; b.classList.remove('on'); } }, icon('x')))); pop.hidden = false; } }, word);
+      const b = h('button', { class: 'w', onclick: () => { document.querySelectorAll('.w.on').forEach(x => x.classList.remove('on')); b.classList.add('on'); const f2 = S.fixgloss && S.fixgloss[key] && !S.fixgloss[key].gone ? S.fixgloss[key].uk : null; wordPopFill(pop, word, f2 || tx.gloss[key], line, () => b.classList.remove('on')); } }, word);
       nw.append(b); if (m[3]) nw.append(m[3]); ln.append(nw);
     });
     sk.append(ln);
@@ -1361,7 +1432,11 @@ VIEWS.cards = main => {
     h('div', { class: 'card raised' }, h('div', { class: 'spread' }, h('h2', null, 'На повтор зараз'), h('span', { class: 'badge' }, due.length)),
       h('p', { class: 'muted small' }, 'Складні слова повертаються частіше: «не згадав» → завтра, «згадав» → через 2, 4, 8… днів. ' + Math.round((1 - oldShare()) * 100) + '% поточні уроки, ' + Math.round(oldShare() * 100) + '% старі (40%, якщо накопичилось 10+ помилок з минулих уроків).'),
       h('button', { class: 'btn wide', disabled: !due.length, onclick: () => startSession({ title: 'Картки повторено', parts: [{ items: flashItems(pickCards(due, 20)) }] }) }, due.length ? 'Повторити' : 'Поки нічого')),
-    h('p', { class: 'muted small' }, 'Вивчено слів: ' + total + '. Нові слова додаються в днях уроків.'),
+    h('p', { class: 'muted small' }, 'Вивчено слів: ' + total + '. Нові слова додаються в днях уроків, а свої — натисканням на слово в завданні чи тексті → «+ в картки».'),
+    (() => { const ML = myLesson(); if (!ML.cards.length) return null;
+      return h('div', { class: 'card' }, h('div', { class: 'spread' }, h('h3', null, 'Мої слова (' + ML.cards.length + ')'), h('button', { class: 'btn ghost small', onclick: () => startSession({ title: 'Мої слова повторено', label: 'Мої слова', parts: [{ items: flashItems(shuffle(ML.cards.map(c => ({ L: ML, c, key: 'my:' + c.id }))).sort((x, y) => ((S.cards[x.key] || {}).b || 0) - ((S.cards[y.key] || {}).b || 0)).slice(0, 25)) }] }) }, ML.cards.length > 25 ? 'Пройти 25 найслабших' : 'Пройти всі')),
+        h('div', { class: 'list' }, ML.cards.slice().reverse().map(c => { const st = S.cards['my:' + c.id]; return h('div', { class: 'li' }, h('span', { class: 'b grow', lang: 'sk' }, c.sk), h('span', { class: 'muted small grow' }, c.uk), h('span', { class: 'tiny muted' }, st ? 'рівень ' + st.b : 'нове'),
+          h('button', { class: 'iconbtn', 'aria-label': 'Видалити ' + c.sk, onclick: () => dialog('Видалити «' + c.sk + '»?', h('p', null, 'Картка зникне з «Моїх слів» і повторень.'), [['Скасувати', () => { }, 'ghost'], ['Видалити', () => { S.mycards[c.id] = { gone: true, ts: Date.now() }; delete S.cards['my:' + c.id]; save(); render(); }, 'orange']]) }, icon('x'))); }))); })(),
     Object.values(C.lessons).sort((a, b) => a.track.localeCompare(b.track) || a.num - b.num).map(L => h('div', { class: 'card' },
       h('div', { class: 'spread' }, h('h3', null, (L.track === 'g' ? 'Граматика' : 'Лексика') + ' · урок ' + L.num), h('button', { class: 'btn ghost small', onclick: () => startSession({ title: 'Картки уроку ' + L.num, parts: [{ items: flashItems(shuffle(L.cards.map(c => ({ L, c, key: L.id + ':' + c.id }))).sort((x, y) => ((S.cards[x.key] || {}).b || 0) - ((S.cards[y.key] || {}).b || 0)).slice(0, 25)) }] }) }, L.cards.length > 25 ? 'Пройти 25 найслабших' : 'Пройти всі')),
       h('div', { class: 'list' }, L.cards.map(c => { const s = S.cards[L.id + ':' + c.id]; return h('div', { class: 'li' }, h('span', { class: 'b grow', lang: 'sk' }, c.sk), h('span', { class: 'muted small grow' }, c.uk), h('span', { class: 'tiny muted' }, s ? 'рівень ' + s.b : 'нове')); }))))));
@@ -1615,7 +1690,7 @@ VIEWS.more = main => {
       CLOUD ? h('div', null, 'Остання синхронізація: ', h('b', null, (SYNC.at || '—') + ' · ' + ({ ok: 'успішно', err: 'ПОМИЛКА ' + SYNC.err, saving: 'триває', local: 'ще не було' }[SYNC.state] || SYNC.state))) : null,
       h('div', null, 'Пройдено днів: ', h('b', null, Object.keys(S.done).length), ' · карток: ', h('b', null, Object.keys(S.cards).length), ' · серія: ', h('b', null, streakOf(S))),
       h('div', null, 'Дні: ', h('b', null, doneSummary() || '—')))),
-    h('p', { class: 'tiny muted' }, (CLOUD ? 'Версія: 3.1 (28.11)' : 'Версія: пілот 0.5') + ' · уроків завантажено: ' + Object.keys(C.lessons).length + (C.errors.length ? ' · помилка завантаження: ' + C.errors.join(', ') : ''))));
+    h('p', { class: 'tiny muted' }, (CLOUD ? 'Версія: 3.2 (28.11)' : 'Версія: пілот 0.5') + ' · уроків завантажено: ' + Object.keys(C.lessons).length + (C.errors.length ? ' · помилка завантаження: ' + C.errors.join(', ') : ''))));
 };
 function showExport(txt) { const ta = h('textarea', { class: 'txt', readonly: true, 'aria-label': 'Копія прогресу' }); ta.value = txt; dialog('Копія прогресу', h('div', { class: 'col' }, h('p', { class: 'small' }, 'Виділи весь текст і скопіюй.'), ta), [['Готово', () => { }]]); }
 function importDialog() {
